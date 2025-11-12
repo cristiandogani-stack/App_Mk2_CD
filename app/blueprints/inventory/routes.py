@@ -15,6 +15,7 @@ import time
 from typing import List, Any
 import base64
 import io
+from threading import RLock
 
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, abort, send_file
 from flask_login import login_required, current_user
@@ -30,6 +31,66 @@ from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document
 # available throughout the module.
 from ...models import ComponentMaster
 from ...checklist import load_checklist
+
+# Cache for mapping upload filename prefixes to the first matching file.  Building
+# this map requires scanning the ``static/uploads`` directory which can contain
+# hundreds of images.  Recreating the map for every request causes noticeable
+# delays when loading the warehouse and anagrafiche views.  A module level cache
+# guarded by a re-entrant lock lets us reuse the mapping across requests and only
+# refresh it when the directory contents change (detected via ``st_mtime``).
+_upload_prefix_cache: dict[str, Any] = {
+    'map': {},
+    'mtime': None,
+}
+_upload_prefix_cache_lock = RLock()
+
+
+def _get_upload_prefix_map() -> dict[str, str]:
+    """Return a cached mapping of upload filename prefixes to filenames.
+
+    The mapping associates prefixes such as ``sn_<id>_`` or ``cm_<id>_`` with the
+    first file found in ``static/uploads`` matching that prefix.  The directory is
+    scanned only when its modification time changes so repeated requests avoid the
+    expensive ``os.listdir`` / ``os.scandir`` call.  When the directory does not
+    exist an empty mapping is returned.
+    """
+
+    upload_dir = os.path.join(current_app.static_folder, 'uploads')
+    try:
+        dir_stat = os.stat(upload_dir)
+    except OSError:
+        return {}
+
+    current_mtime = dir_stat.st_mtime
+    with _upload_prefix_cache_lock:
+        cached_mtime = _upload_prefix_cache.get('mtime')
+        if cached_mtime == current_mtime:
+            cached_map = _upload_prefix_cache.get('map', {})
+            # Return the cached dictionary directly; callers treat it as read-only.
+            return cached_map
+
+        prefix_map: dict[str, str] = {}
+        try:
+            for entry in os.scandir(upload_dir):
+                try:
+                    if not entry.is_file():
+                        continue
+                except AttributeError:
+                    # ``os.DirEntry`` on some platforms might not expose ``is_file``;
+                    # fall back to ``os.path.isfile``.
+                    if not os.path.isfile(entry.path):
+                        continue
+                parts = entry.name.split('_', 2)
+                if len(parts) >= 2:
+                    prefix = parts[0] + '_' + parts[1] + '_'
+                    if prefix not in prefix_map:
+                        prefix_map[prefix] = entry.name
+        except Exception:
+            prefix_map = {}
+
+        _upload_prefix_cache['map'] = prefix_map
+        _upload_prefix_cache['mtime'] = current_mtime
+        return prefix_map
 
 # -----------------------------------------------------------------------------
 # Helper to generate a simple PNG representation of a DataMatrix/QR code.
@@ -267,6 +328,22 @@ def _lookup_structure_image(struct: Structure) -> str | None:
     :param struct: Structure instance for which to find an image.
     :return: Filename (not full path) of the selected image or None.
     """
+    # Cache lookups on flask.g within the request to avoid querying for the same
+    # structure multiple times.  When no request context is active the cache is
+    # simply skipped.
+    struct_id = getattr(struct, 'id', None)
+    cache = None
+    try:
+        from flask import g
+        cache = getattr(g, 'structure_image_cache', None)
+        if cache is None:
+            cache = {}
+            g.structure_image_cache = cache
+        if struct_id is not None and struct_id in cache:
+            return cache[struct_id]
+    except Exception:
+        cache = None
+
     # Step 1: look for a product component image
     try:
         comp = (
@@ -277,6 +354,8 @@ def _lookup_structure_image(struct: Structure) -> str | None:
             .first()
         )
         if comp and comp.image_filename:
+            if cache is not None and struct_id is not None:
+                cache[struct_id] = comp.image_filename
             return comp.image_filename
     except Exception:
         # ignore database errors and continue with fallbacks
@@ -288,40 +367,43 @@ def _lookup_structure_image(struct: Structure) -> str | None:
     try:
         upload_dir = os.path.join(current_app.static_folder, 'uploads')
         if not os.path.isdir(upload_dir):
+            if cache is not None and struct_id is not None:
+                cache[struct_id] = None
             return None
         from flask import g
-        # Build prefix map if not already present on g
+        # Build prefix map if not already present on g using the cached helper.
         if not hasattr(g, 'upload_prefix_map'):
-            prefix_map: dict[str, str] = {}
-            try:
-                for fname in os.listdir(upload_dir):
-                    parts = fname.split('_', 2)
-                    if len(parts) >= 2:
-                        prefix = parts[0] + '_' + parts[1] + '_'
-                        if prefix not in prefix_map:
-                            prefix_map[prefix] = fname
-            except Exception:
-                prefix_map = {}
-            g.upload_prefix_map = prefix_map
+            g.upload_prefix_map = _get_upload_prefix_map()
         prefix_map = getattr(g, 'upload_prefix_map', {})
         # Structure‑level image (sn_<structure.id>_*)
         prefix_struct = f"sn_{struct.id}_"
         if prefix_struct in prefix_map:
-            return prefix_map[prefix_struct]
+            result = prefix_map[prefix_struct]
+            if cache is not None and struct_id is not None:
+                cache[struct_id] = result
+            return result
         # Component master image (cm_<master.id>_*)
         master = getattr(struct, 'component_master', None)
         if master:
             prefix_master = f"cm_{master.id}_"
             if prefix_master in prefix_map:
-                return prefix_map[prefix_master]
+                result = prefix_map[prefix_master]
+                if cache is not None and struct_id is not None:
+                    cache[struct_id] = result
+                return result
         # Structure type image (st_<type.id>_*)
         stype = getattr(struct, 'type', None)
         if stype:
             prefix_type = f"st_{stype.id}_"
             if prefix_type in prefix_map:
-                return prefix_map[prefix_type]
+                result = prefix_map[prefix_type]
+                if cache is not None and struct_id is not None:
+                    cache[struct_id] = result
+                return result
     except Exception:
         pass
+    if cache is not None and struct_id is not None:
+        cache[struct_id] = None
     return None
 
 

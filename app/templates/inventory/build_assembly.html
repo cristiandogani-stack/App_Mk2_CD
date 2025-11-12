@@ -140,67 +140,13 @@ document.addEventListener('DOMContentLoaded', function(){
   {# Back link.  Points to the computed back_url passed from the server so the user returns to the correct previous
      page (e.g. product detail or assemblies list).  Fallback to list_assemblies if back_url is missing. #}
   <a href="{{ back_url or url_for('inventory.list_assemblies') }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
-  <div class="glass" style="padding:16px;">
-    <form method="post" enctype="multipart/form-data" class="form">
+  <div class="glass workflow-container">
+    <form method="post" enctype="multipart/form-data" class="workflow-form form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Preserve the URL to return to when the build is cancelled or completed.  This value is assigned in the view using
          request.referrer (or a fallback) and passed through the form as a hidden input so that the POST handler can
          redirect back to the correct location. #}
       <input type="hidden" name="back_url" value="{{ back_url or url_for('inventory.list_assemblies') }}">
-      {# The quantity field has been removed.  Assemblies are now built in
-         predetermined quantities; the form defaults to a single unit and
-         the quantity is managed by the production box. #}
-      {% if parts|length > 0 %}
-      <div class="grid grid-2" style="margin-top:16px; gap:16px;">
-        {#
-          Render each part as a card with its image, name, available stock,
-          existing documentation and upload fields.  Documentation of type
-          "Altro" is no longer requested as per updated requirements.
-        #}
-        {% for part in parts %}
-        <div class="card glass" style="padding:16px;">
-          <div style="text-align:center; margin-bottom:8px;">
-            {% if part.display_image_filename %}
-              <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto;">
-            {% else %}
-              <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto; filter: invert(1); opacity:0.7;">
-            {% endif %}
-          </div>
-          <h4 style="text-align:center; margin:0 0 4px; font-size:18px; font-weight:600;">{{ part.name }}</h4>
-          {# Show the quantity of this component required to build the assembly.
-             Use the required_quantities mapping passed from the view.  When
-             not available default to 1.  Also display how many units have
-             already been associated via the scanning workflow. #}
-          <p style="text-align:center; font-size:14px; color:var(--muted); margin:0 0 4px;">
-            Richiesti: {{ required_quantities.get(part.id, 1) }}
-          </p>
-          <p style="text-align:center; font-size:14px; color:var(--muted); margin:0 0 12px;">
-            Associati: {{ associated_counts.get(part.id, 0) }}
-          </p>
-          <div style="text-align:center; margin-bottom:12px;">
-            <button type="button"
-                    class="btn small primary associate"
-                    data-part-id="{{ part.id }}"
-                    data-part-name="{{ part.name }}"
-                    data-required="{{ required_quantities.get(part.id, 1) }}"
-                    data-associated="{{ associated_counts.get(part.id, 0) }}"
-                    {% if (not assembly_code) or (associated_counts.get(part.id, 0) >= required_quantities.get(part.id, 1)) %}disabled{% endif %}>Associa</button>
-          </div>
-          <div style="margin-bottom:12px;">
-            {# Documentation inputs for individual components are intentionally omitted in the
-               production build flow.  Operators upload documentation only for the
-               assembly itself, which is rendered below the list of components. #}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="muted">Nessuna parte associata a questo assieme.</p>
-      {% endif %}
-      {# Assembly-level documentation section.  Render upload fields and download
-         links for the selected assembly only.  This appears below the component
-         grid so that operators can focus on scanning and associating parts first,
-         then provide the necessary documents for the overall assembly. #}
       {% set asm_docs = required_docs.get(assembly.id, []) %}
       {% set doc_label_map = {
         'qualita': 'Modulo Cert. qualità',
@@ -211,63 +157,105 @@ document.addEventListener('DOMContentLoaded', function(){
         'ddt_fornitore': 'DDT fornitore',
         'altro': 'Altro'
       } %}
-      <div style="margin-top:16px;">
-        {% if asm_docs %}
-          <h5 style="margin:0 0 6px; font-size:14px; font-weight:600;">Documenti assieme</h5>
-          <div class="document-section">
-            {% for doc in asm_docs %}
-            <div class="document-card">
-              <div class="document-card-header">
-                <span class="document-card-title">{{ doc_label_map.get(doc.type, doc.type) }}</span>
-                <div class="document-card-meta">
-                  {% if doc.original_filename %}
-                    <a href="{{ url_for('products.download_file', filename=doc.original_filename) }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
-                  {% else %}
-                    <span class="muted" style="white-space:nowrap;">—</span>
-                  {% endif %}
-                </div>
-              </div>
-              <div class="document-card-body">
-                <input type="file" name="{{ doc.field_name }}" required>
-                <span class="file-name document-file-name"></span>
-              </div>
-            </div>
-            {% endfor %}
+      {% set associated_total = associated_counts.values() | sum if associated_counts else 0 %}
+      {% set required_total = required_quantities.values() | sum if required_quantities else 0 %}
+      <header class="workflow-header">
+        <div class="workflow-thumb">
+          {% set asm_image = assembly.display_image_filename or assembly.image_filename %}
+          {% if asm_image %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + asm_image) }}" alt="{{ assembly.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ assembly.name }}" style="filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="workflow-header-text">
+          <h3 class="workflow-title">{{ assembly.name }}</h3>
+          {% if assembly.description %}
+            <p class="workflow-subtitle">{{ assembly.description }}</p>
+          {% endif %}
+          <div class="workflow-meta">
+            <span class="workflow-chip">Assieme</span>
+            <span class="workflow-chip">Componenti: {{ parts|length }}</span>
+            <span class="workflow-chip">Associati: {{ associated_total }}</span>
+            <span class="workflow-chip">Richiesti: {{ required_total }}</span>
           </div>
-        {% else %}
-          <p class="muted" style="margin:4px 0;">Nessuna documentazione richiesta per l'assieme.</p>
-        {% endif %}
+          <div class="workflow-status">
+            <span class="workflow-pill">Documenti e componenti</span>
+            <span class="workflow-indicator" title="Documenti e componenti">
+              {{ '🟢' if docs_ready and assoc_ready else '🔴' }}
+            </span>
+          </div>
+        </div>
+      </header>
+      <div class="workflow-body">
+        <div class="workflow-main">
+          <div class="workflow-block">
+            <h4>Associa i componenti richiesti</h4>
+            {% if parts|length > 0 %}
+              <p class="muted" style="margin:0 0 12px;">Scansiona ogni componente per raggiungere il totale richiesto e abilita la costruzione.</p>
+              <div class="grid grid-2 workflow-association-grid">
+                {% for part in parts %}
+                <div class="card glass workflow-association-card">
+                  <div class="workflow-association-thumb">
+                    {% if part.display_image_filename %}
+                      <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}">
+                    {% else %}
+                      <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="filter: invert(1); opacity:0.7;">
+                    {% endif %}
+                  </div>
+                  <h4 class="workflow-association-title">{{ part.name }}</h4>
+                  <p class="workflow-association-meta">Richiesti: {{ required_quantities.get(part.id, 1) }}</p>
+                  <p class="workflow-association-meta">Associati: {{ associated_counts.get(part.id, 0) }}</p>
+                  <button type="button"
+                          class="btn small primary associate"
+                          data-part-id="{{ part.id }}"
+                          data-part-name="{{ part.name }}"
+                          data-required="{{ required_quantities.get(part.id, 1) }}"
+                          data-associated="{{ associated_counts.get(part.id, 0) }}"
+                          {% if (not assembly_code) or (associated_counts.get(part.id, 0) >= required_quantities.get(part.id, 1)) %}disabled{% endif %}>Associa</button>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0;">Nessuna parte associata a questo assieme.</p>
+            {% endif %}
+          </div>
+        </div>
+        <aside class="workflow-side">
+          <div class="workflow-block">
+            <h4>Documenti assieme</h4>
+            {% if asm_docs %}
+              <div class="document-section">
+                {% for doc in asm_docs %}
+                <div class="document-card">
+                  <div class="document-card-header">
+                    <span class="document-card-title">{{ doc_label_map.get(doc.type, doc.type) }}</span>
+                    <div class="document-card-meta">
+                      {% if doc.original_filename %}
+                        <a href="{{ url_for('products.download_file', filename=doc.original_filename) }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
+                      {% else %}
+                        <span class="muted" style="white-space:nowrap;">—</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="document-card-body">
+                    <input type="file" name="{{ doc.field_name }}" required>
+                    <span class="file-name document-file-name"></span>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0;">Nessuna documentazione richiesta per l'assieme.</p>
+            {% endif %}
+          </div>
+        </aside>
       </div>
-      <div style="margin-top:16px;">
-        {#
-          Traffic light indicator.  The light turns green only when all
-          required documents have been uploaded *and* all required
-          components have been associated via scans.  Until both
-          conditions are satisfied the light remains red.  The title
-          attribute clarifies the combined requirement for operators.
-        #}
-        <span title="Documenti e componenti" style="font-size:24px; vertical-align:middle;">
-          {{ '🟢' if docs_ready and assoc_ready else '🔴' }}
-        </span>
-      </div>
-      <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px; width:100%;">
-        {#
-          The build button is enabled only when the entire assembly is ready
-          to be constructed.  This includes: all component parts are in
-          stock (ready_parts), all mandatory documentation has been
-          provided (docs_ready) and all required components have been
-          linked to the assembly via scans (assoc_ready).  These
-          conditions are precomputed in the view and passed as
-          ``ready_all``.  When false the button is disabled.
-        #}
-        <button type="submit" class="btn primary full" {% if not ready_all %}disabled{% endif %}>Costruisci</button>
-        {# When rendered outside of a modal (not embedded), show a cancel link
-           that navigates back.  In embedded mode this link is omitted so
-           that users remain within the popup.  A close button is provided
-           by the parent modal. #}
+      <div class="workflow-footer">
         {% if not embedded %}
-        <a href="{{ back_url or url_for('inventory.list_assemblies') }}" class="btn ghost full">Annulla</a>
+          <a href="{{ back_url or url_for('inventory.list_assemblies') }}" class="btn ghost">Annulla</a>
         {% endif %}
+        <button type="submit" class="btn primary" {% if not ready_all %}disabled{% endif %}>Costruisci</button>
       </div>
     </form>
   </div>

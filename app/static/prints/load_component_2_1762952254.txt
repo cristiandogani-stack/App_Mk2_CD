@@ -1,0 +1,2 @@
+Componente: comp2 (ID: 2)
+Quantità caricata: 1.0

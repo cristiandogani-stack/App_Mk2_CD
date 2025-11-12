@@ -264,6 +264,26 @@
       window.currentProductId = {{ product.id }};
     });
 
+    function redirectToProductionOverview(boxType, boxId) {
+      const params = new URLSearchParams();
+      const tab = (boxType || '').toString().trim().toUpperCase();
+      if (tab) {
+        params.set('tab', tab);
+      }
+      if (boxId) {
+        params.set('box', boxId);
+      }
+      let url = '/production/';
+      const query = params.toString();
+      if (query) {
+        url += `?${query}`;
+      }
+      if (boxId) {
+        url += `#box-${boxId}`;
+      }
+      window.location.href = url;
+    }
+
     /**
      * Prompt the user to enter a quantity and create a reservation via the API.
      * Optional parameters allow overriding the default box type and
@@ -297,9 +317,9 @@
         .then(data => {
           const codes = data.items.map(item => item.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
-          // Redirect to the production box detail page
           if (data.productionBoxId) {
-            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+            const targetType = data.boxType || payload.boxType || 'PARTE';
+            redirectToProductionOverview(targetType, data.productionBoxId);
           }
         })
         .catch(err => {
@@ -414,7 +434,7 @@
           const codes = data.items.map(i => i.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+            redirectToProductionOverview(data.boxType || 'ASSIEME', data.productionBoxId);
           }
         })
         .catch(err => {

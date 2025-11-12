@@ -211,12 +211,41 @@ def index():
         )
         grouped_boxes['ALTRO'] = uncategorised
 
+    # Determine which tab should be active.  Accept a ``tab`` query parameter
+    # and validate it against the known category keys.  When a ``box`` query
+    # parameter is provided, use the corresponding box type as a fallback so
+    # that deep links like ``/production?box=123`` automatically reveal the
+    # correct section.
+    requested_tab = request.args.get('tab', type=str)
+    requested_box_id = request.args.get('box', type=int)
+    valid_keys = {c['key'] for c in category_definitions}
+    initial_tab = None
+    if requested_tab:
+        candidate = (requested_tab or '').strip().upper()
+        if candidate in valid_keys:
+            initial_tab = candidate
+    focused_box = None
+    if requested_box_id:
+        for b in boxes:
+            try:
+                if b.id == requested_box_id:
+                    focused_box = b
+                    break
+            except Exception:
+                continue
+    if focused_box and not initial_tab:
+        candidate = getattr(focused_box, 'box_type', None)
+        if candidate in valid_keys:
+            initial_tab = candidate
+
     return render_template(
         'production/index.html',
         boxes=boxes,
         categories=category_definitions,
         grouped_boxes=grouped_boxes,
         active_module='production',
+        initial_tab=initial_tab,
+        focused_box_id=requested_box_id,
     )
 
 

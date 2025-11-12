@@ -128,6 +128,26 @@
     document.addEventListener('DOMContentLoaded', function(){
       window.currentProductId = {{ product.id }};
     });
+    function redirectToProductionOverview(boxType, boxId) {
+      const params = new URLSearchParams();
+      const tab = (boxType || '').toString().trim().toUpperCase();
+      if (tab) {
+        params.set('tab', tab);
+      }
+      if (boxId) {
+        params.set('box', boxId);
+      }
+      let url = '/production/';
+      const query = params.toString();
+      if (query) {
+        url += `?${query}`;
+      }
+      if (boxId) {
+        url += `#box-${boxId}`;
+      }
+      window.location.href = url;
+    }
+
     /**
      * Create a reservation for a component.  Accept optional boxType and
      * componentCode parameters to override the default values so that
@@ -154,7 +174,8 @@
           const codes = data.items.map(i => i.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+            const targetType = data.boxType || payload.boxType || 'COMMERCIALE';
+            redirectToProductionOverview(targetType, data.productionBoxId);
           }
         })
         .catch(err => { alert('Si è verificato un errore: ' + err.message); console.error(err); });

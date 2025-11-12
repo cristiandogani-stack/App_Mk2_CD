@@ -1380,6 +1380,665 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 }
 
 /*
+ * Unified document upload styling
+ *
+ * Multiple inventory views share the same document upload pattern: a
+ * compact card that shows the document title, optional download links
+ * for the original file and an input for the compiled upload.  The
+ * previous implementation relied on ad-hoc inline styles which led to
+ * slight visual differences between loading a part, commercial item,
+ * assembly or finished product.  Dedicated classes keep the layout
+ * consistent and easier to maintain.  Cards inherit the glassmorphism
+ * aesthetic used elsewhere in the app and gracefully wrap their
+ * contents on smaller screens.
+ */
+.document-section{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.document-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:14px;
+  border-radius:12px;
+  background:rgba(255,255,255,.18);
+  border:1px solid var(--glass-stroke);
+  box-shadow:var(--shadow);
+}
+
+html[data-theme='dark'] .document-card{
+  background:rgba(17,25,40,.55);
+}
+
+.document-card-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.document-card-title{
+  font-size:15px;
+  font-weight:600;
+}
+
+.document-card-meta{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:140px;
+}
+
+.document-card-meta .btn{
+  align-self:flex-start;
+}
+
+.document-card-body{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.document-card-body input[type="file"]{
+  width:100%;
+}
+
+.document-file-name{
+  font-size:12px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.document-downloads{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.document-downloads-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+/*
+ * Guided workflow layout
+ *
+ * Loading components and building assemblies/products now share the same
+ * interface: a header with the main item, a column for associations and a
+ * dedicated column for document uploads.  The styles below provide the
+ * structure so each workflow renders consistently regardless of the
+ * underlying template.  Sections stack vertically on narrow screens and
+ * switch to a two-column layout on larger viewports.
+ */
+.workflow-container{
+  padding:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+.workflow-form{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+
+.workflow-hero{
+  display:flex;
+  align-items:center;
+  gap:24px;
+  padding:24px;
+  border-bottom:1px solid var(--glass-stroke);
+  background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05));
+}
+
+html[data-theme='dark'] .workflow-hero{
+  background:linear-gradient(135deg, rgba(17,25,40,0.65), rgba(17,25,40,0.45));
+}
+
+.workflow-hero-main{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  flex:1;
+  min-width:0;
+}
+
+.workflow-hero-copy{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+
+.workflow-eyebrow{
+  font-size:12px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  font-weight:600;
+  color:var(--muted);
+}
+
+.workflow-hero-actions{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:12px;
+}
+
+.workflow-hero-buttons{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+}
+
+.workflow-hero-buttons .btn{
+  width:auto;
+}
+
+.workflow-hero-actions .btn{
+  margin-top:4px;
+}
+
+@media (max-width: 720px){
+  .workflow-hero{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:18px;
+  }
+  .workflow-hero-actions{
+    width:100%;
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .workflow-hero-buttons{
+    width:100%;
+    flex-direction:row;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  .workflow-hero-buttons .btn{
+    flex:0 0 auto;
+  }
+  .workflow-hero-actions .btn{
+    margin-top:0;
+  }
+  .workflow-indicator{
+    font-size:24px;
+  }
+}
+
+.workflow-header{
+  display:flex;
+  align-items:center;
+  gap:20px;
+  flex-wrap:wrap;
+  padding:20px;
+  border-bottom:1px solid var(--glass-stroke);
+}
+
+.workflow-thumb{
+  flex:0 0 96px;
+  width:96px;
+  height:96px;
+  border-radius:16px;
+  background:rgba(255,255,255,0.12);
+  border:1px solid var(--glass-stroke);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+html[data-theme='dark'] .workflow-thumb{
+  background:rgba(17,25,40,0.55);
+}
+
+.workflow-thumb img{
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+}
+
+.workflow-header-text{
+  flex:1 1 280px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.workflow-title{
+  margin:0;
+  font-size:26px;
+  font-weight:600;
+}
+
+.workflow-subtitle{
+  margin:0;
+  font-size:14px;
+  color:var(--muted);
+}
+
+.workflow-status{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
+
+.workflow-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(59,130,246,0.18);
+  border:1px solid rgba(59,130,246,0.35);
+  font-size:13px;
+  font-weight:500;
+}
+
+.workflow-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(148,163,184,0.18);
+  font-size:13px;
+  font-weight:500;
+}
+
+.workflow-indicator{
+  font-size:28px;
+}
+
+.workflow-body{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  padding:20px;
+}
+
+.workflow-main,
+.workflow-side{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.workflow-block{
+  padding:18px;
+  border-radius:14px;
+  border:1px solid var(--glass-stroke);
+  background:rgba(255,255,255,0.14);
+}
+
+html[data-theme='dark'] .workflow-block{
+  background:rgba(17,25,40,0.55);
+}
+
+.workflow-block h4{
+  margin:0 0 8px;
+  font-size:16px;
+  font-weight:600;
+}
+
+.workflow-footer{
+  padding:20px;
+  border-top:1px solid var(--glass-stroke);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.workflow-footer .btn{
+  width:100%;
+}
+
+.workflow-block-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:16px;
+}
+
+.workflow-block-header h4{
+  margin:0;
+}
+
+@media(min-width: 800px){
+  .workflow-body{
+    flex-direction:row;
+    align-items:flex-start;
+  }
+  .workflow-main{
+    flex:1 1 auto;
+  }
+  .workflow-side{
+    flex:0 0 360px;
+  }
+  .workflow-footer{
+    flex-direction:row;
+    justify-content:flex-end;
+  }
+  .workflow-footer .btn{
+    width:auto;
+    min-width:150px;
+  }
+}
+
+.production-box-section .workflow-container{
+  min-height:0;
+}
+
+.production-box-body{
+  display:flex;
+  flex-direction:column;
+  gap:24px;
+  padding:24px;
+}
+
+.production-box-summary{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+  gap:16px;
+}
+
+.production-box-stat{
+  padding:16px;
+  border-radius:14px;
+  border:1px solid var(--glass-stroke);
+  background:rgba(255,255,255,0.22);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+html[data-theme='dark'] .production-box-stat{
+  background:rgba(17,25,40,0.55);
+}
+
+.production-box-stat-label{
+  font-size:12px;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+
+.production-box-stat-value{
+  font-size:24px;
+  font-weight:600;
+}
+
+.table-scroll{
+  overflow-x:auto;
+  border-radius:12px;
+}
+
+.production-box-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  min-width:640px;
+}
+
+.production-box-table thead th{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  padding:14px 16px;
+  color:var(--muted);
+  border-bottom:1px solid var(--glass-stroke);
+  background:rgba(255,255,255,0.08);
+}
+
+html[data-theme='dark'] .production-box-table thead th{
+  background:rgba(17,25,40,0.45);
+}
+
+.production-box-table td{
+  padding:16px;
+  border-bottom:1px solid var(--glass-stroke);
+  vertical-align:middle;
+}
+
+.production-box-table tbody tr{
+  background:rgba(255,255,255,0.14);
+  transition:background 0.2s ease;
+}
+
+html[data-theme='dark'] .production-box-table tbody tr{
+  background:rgba(17,25,40,0.55);
+}
+
+.production-box-table tbody tr:hover{
+  background:rgba(59,130,246,0.12);
+}
+
+.production-box-table tbody tr:last-child td{
+  border-bottom:none;
+}
+
+.production-box-table .btn{
+  white-space:nowrap;
+}
+
+.text-right{
+  text-align:right;
+}
+
+.status-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 12px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:600;
+}
+
+.status-ready{
+  background:rgba(34,197,94,0.18);
+  color:#166534;
+}
+
+.status-progress{
+  background:rgba(59,130,246,0.18);
+  color:#1d4ed8;
+}
+
+.status-pending{
+  background:rgba(251,191,36,0.22);
+  color:#92400e;
+}
+
+html[data-theme='dark'] .status-ready{
+  color:#4ade80;
+}
+
+html[data-theme='dark'] .status-progress{
+  color:#60a5fa;
+}
+
+html[data-theme='dark'] .status-pending{
+  color:#facc15;
+}
+
+.production-box-item{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.production-box-item-name{
+  font-weight:600;
+}
+
+.production-box-item-code{
+  font-size:13px;
+  color:var(--muted);
+}
+
+.dm-container{
+  display:inline-flex;
+  padding:6px;
+  background:#fff;
+  border-radius:12px;
+  border:1px solid rgba(148,163,184,0.35);
+}
+
+html[data-theme='dark'] .dm-container{
+  border-color:rgba(255,255,255,0.2);
+}
+
+.dm-container svg{
+  display:block;
+  width:72px;
+  height:72px;
+}
+
+.workflow-modal{
+  position:fixed;
+  inset:0;
+  padding:40px 16px;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(15,23,42,0.55);
+  backdrop-filter:blur(6px);
+  z-index:1000;
+}
+
+.workflow-modal-dialog{
+  width:100%;
+  max-width:960px;
+  max-height:95vh;
+  background:var(--glass-bg, rgba(255,255,255,0.82));
+  border-radius:18px;
+  border:1px solid var(--glass-stroke);
+  box-shadow:0 25px 50px -12px rgba(15,23,42,0.35);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+.workflow-modal-header{
+  padding:20px 24px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  border-bottom:1px solid var(--glass-stroke);
+}
+
+.workflow-modal-title{
+  margin:0;
+  font-size:20px;
+  font-weight:600;
+}
+
+.workflow-modal-frame{
+  flex:1 1 auto;
+  border:0;
+  width:100%;
+  background:var(--surface, #fff);
+}
+
+.workflow-modal-close{
+  white-space:nowrap;
+}
+
+@media (max-width: 720px){
+  .production-box-body{
+    padding:20px;
+  }
+  .production-box-summary{
+    grid-template-columns:1fr;
+  }
+  .production-box-table{
+    min-width:0;
+  }
+  .workflow-modal{
+    padding:24px 12px;
+    align-items:flex-start;
+  }
+  .workflow-modal-dialog{
+    border-radius:14px;
+    max-height:90vh;
+  }
+  .workflow-modal-header{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+}
+
+.workflow-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:4px;
+}
+
+.workflow-association-grid{
+  width:100%;
+}
+
+.workflow-association-card{
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:center;
+  text-align:center;
+}
+
+.workflow-association-thumb{
+  width:96px;
+  height:96px;
+  border-radius:16px;
+  background:rgba(255,255,255,0.12);
+  border:1px solid var(--glass-stroke);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+html[data-theme='dark'] .workflow-association-thumb{
+  background:rgba(17,25,40,0.55);
+}
+
+.workflow-association-thumb img{
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+}
+
+.workflow-association-title{
+  margin:0;
+  font-size:16px;
+  font-weight:600;
+}
+
+.workflow-association-meta{
+  margin:0;
+  font-size:14px;
+  color:var(--muted);
+}
+
+/*
  * Checklist toggle styling
  *
  * The product and inventory pages allow users to flag uploaded

@@ -15,7 +15,7 @@
       <div class="list-row">
         <div class="list-info">
           <div class="list-title">{{ u.username }}</div>
-          <div class="list-subtitle">Ruolo: {{ u.role }}</div>
+          <div class="list-subtitle">Email: {{ u.email }} · Ruolo: {{ u.role }}</div>
         </div>
         <div class="list-actions">
           <a class="btn ghost small" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Modifica</a>

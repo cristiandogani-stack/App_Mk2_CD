@@ -12,7 +12,7 @@ with app.app_context():
     if not admin:
         username = 'admin'
         password = secrets.token_urlsafe(12)
-        admin = User(username=username, role='admin', active=True)
+        admin = User(username=username, email=f'{username}@local', role='admin', active=True)
         admin.set_password(password)
         db.session.add(admin)
         print('--- ADMIN CREATO ---')
@@ -22,7 +22,7 @@ with app.app_context():
 
     cristian = User.query.filter_by(username='cristian').first()
     if not cristian:
-        cristian = User(username='cristian', role='admin', active=True)
+        cristian = User(username='cristian', email='cristian@local', role='admin', active=True)
         cristian.set_password('admin')
         db.session.add(cristian)
         print('--- UTENTE AGGIUNTO ---')

@@ -1481,12 +1481,81 @@ html[data-theme='dark'] .document-card{
 .workflow-container{
   padding:0;
   overflow:hidden;
+  display:flex;
+  flex-direction:column;
 }
 
 .workflow-form{
   display:flex;
   flex-direction:column;
   gap:0;
+}
+
+.workflow-hero{
+  display:flex;
+  align-items:center;
+  gap:24px;
+  padding:24px;
+  border-bottom:1px solid var(--glass-stroke);
+  background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05));
+}
+
+html[data-theme='dark'] .workflow-hero{
+  background:linear-gradient(135deg, rgba(17,25,40,0.65), rgba(17,25,40,0.45));
+}
+
+.workflow-hero-main{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  flex:1;
+  min-width:0;
+}
+
+.workflow-hero-copy{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+
+.workflow-eyebrow{
+  font-size:12px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  font-weight:600;
+  color:var(--muted);
+}
+
+.workflow-hero-actions{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:12px;
+}
+
+.workflow-hero-actions .btn{
+  margin-top:4px;
+}
+
+@media (max-width: 720px){
+  .workflow-hero{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:18px;
+  }
+  .workflow-hero-actions{
+    width:100%;
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .workflow-hero-actions .btn{
+    margin-top:0;
+  }
+  .workflow-indicator{
+    font-size:24px;
+  }
 }
 
 .workflow-header{
@@ -1530,7 +1599,7 @@ html[data-theme='dark'] .workflow-thumb{
 
 .workflow-title{
   margin:0;
-  font-size:22px;
+  font-size:26px;
   font-weight:600;
 }
 

@@ -35,7 +35,7 @@
   /* Hide header and mobile navigation completely when embedded */
   .app-header, .nav-mobile { display:none !important; }
   /* Hide the back link at the top of the build page */
-  .section > a.btn.ghost.small { display:none !important; }
+  .back-link { display:none !important; }
 </style>
 <script>
 // Embedded mode submission handling
@@ -71,11 +71,31 @@ document.addEventListener('DOMContentLoaded', function(){
 {% endif %}
 
 {% block content %}
-<section class="section">
-  <h2 class="section-title">Costruisci {{ product.name }}</h2>
-  {# Back link: return to the referrer or fall back to the product detail page #}
-  <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
+<section class="section workflow-section">
   <div class="glass workflow-container">
+    <div class="workflow-hero">
+      <div class="workflow-hero-main">
+        <div class="workflow-thumb">
+          {% set prod_image = product.display_image_filename or product.image_filename %}
+          {% if prod_image %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + prod_image) }}" alt="{{ product.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="workflow-hero-copy">
+          <span class="workflow-eyebrow">Costruzione prodotto</span>
+          <h1 class="workflow-title">{{ product.name }}</h1>
+          {% if product.description %}
+            <p class="workflow-subtitle">{{ product.description }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="workflow-hero-actions">
+        <span id="product-status" class="workflow-indicator" title="Stato lavorazione">{{ '🟢 Pronto' if ready_parts and docs_ready and assoc_ready else '🔴 In attesa' }}</span>
+        <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small back-link">Indietro</a>
+      </div>
+    </div>
     {% if children|length == 0 %}
       <div class="workflow-body">
         <p class="muted" style="margin:0;">Nessun BOM definito per questo prodotto.</p>
@@ -87,25 +107,6 @@ document.addEventListener('DOMContentLoaded', function(){
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% endif %}
         {% set prod_docs = doc_map.get(product.id) %}
-        <header class="workflow-header">
-          <div class="workflow-thumb">
-            {% set prod_image = product.display_image_filename or product.image_filename %}
-            {% if prod_image %}
-              <img loading="lazy" src="{{ url_for('static', filename='uploads/' + prod_image) }}" alt="{{ product.name }}">
-            {% else %}
-              <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="filter: invert(1); opacity:0.7;">
-            {% endif %}
-          </div>
-          <div class="workflow-header-text">
-            <h3 class="workflow-title">{{ product.name }}</h3>
-            {% if product.description %}
-              <p class="workflow-subtitle">{{ product.description }}</p>
-            {% endif %}
-            <div class="workflow-status">
-              <span class="workflow-indicator" title="Stato lavorazione">{{ '🟢 Pronto' if ready_parts and docs_ready and assoc_ready else '🔴 In attesa' }}</span>
-            </div>
-          </div>
-        </header>
         <div class="workflow-body">
           <div class="workflow-main">
             <div class="workflow-block">
@@ -201,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const form = document.querySelector('form');
   if (!form) return;
   const fileInputs = form.querySelectorAll('input[type="file"]');
-  const semSpan = form.querySelector('.workflow-indicator');
+  const semSpan = document.getElementById('product-status');
   const buildBtn = form.querySelector('button[type="submit"]');
   const readyParts = {{ ready_parts | tojson | safe }};
   const assocReady = {{ assoc_ready | tojson | safe }};

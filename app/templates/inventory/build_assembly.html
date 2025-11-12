@@ -23,7 +23,7 @@
   /* Hide header and mobile navigation completely */
   .app-header, .nav-mobile { display:none !important; }
   /* Hide the back link at the top of the build page */
-  .section > a.btn.ghost.small { display:none !important; }
+  .back-link { display:none !important; }
 </style>
 <script>
 // When embedded inside a modal, intercept the submit event of the build form.
@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', function(){
   // documents are required the list may be empty.
   const fileInputs = form.querySelectorAll('input[type="file"]');
   // Locate the traffic light element displayed in the header.
-  const semSpan = form.querySelector('.workflow-indicator');
+  const semSpan = document.getElementById('assembly-status');
   // Reference the submit button.  It has type="submit" in the form.
   const buildBtn = form.querySelector('button[type="submit"]');
   // Determine the server-side readiness of parts and associations.  Use
@@ -132,12 +132,33 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 {% endif %}
-<section class="section">
-  <h2 class="section-title">Costruisci {{ assembly.name }}</h2>
-  {# Back link.  Points to the computed back_url passed from the server so the user returns to the correct previous
-     page (e.g. product detail or assemblies list).  Fallback to list_assemblies if back_url is missing. #}
-  <a href="{{ back_url or url_for('inventory.list_assemblies') }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
+<section class="section workflow-section">
   <div class="glass workflow-container">
+    <div class="workflow-hero">
+      <div class="workflow-hero-main">
+        <div class="workflow-thumb">
+          {% set asm_image = assembly.display_image_filename or assembly.image_filename %}
+          {% if asm_image %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + asm_image) }}" alt="{{ assembly.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ assembly.name }}" style="filter:invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="workflow-hero-copy">
+          <span class="workflow-eyebrow">Costruzione assieme</span>
+          <h1 class="workflow-title">{{ assembly.name }}</h1>
+          {% if assembly.description %}
+            <p class="workflow-subtitle">{{ assembly.description }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="workflow-hero-actions">
+        <span id="assembly-status" class="workflow-indicator" title="Stato lavorazione">
+          {{ '🟢 Pronto' if docs_ready and assoc_ready else '🔴 In attesa' }}
+        </span>
+        <a href="{{ back_url or url_for('inventory.list_assemblies') }}" class="btn ghost small back-link">Indietro</a>
+      </div>
+    </div>
     <form method="post" enctype="multipart/form-data" class="workflow-form form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Preserve the URL to return to when the build is cancelled or completed.  This value is assigned in the view using
@@ -154,27 +175,6 @@ document.addEventListener('DOMContentLoaded', function(){
         'ddt_fornitore': 'DDT fornitore',
         'altro': 'Altro'
       } %}
-      <header class="workflow-header">
-        <div class="workflow-thumb">
-          {% set asm_image = assembly.display_image_filename or assembly.image_filename %}
-          {% if asm_image %}
-            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + asm_image) }}" alt="{{ assembly.name }}">
-          {% else %}
-            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ assembly.name }}" style="filter: invert(1); opacity:0.7;">
-          {% endif %}
-        </div>
-        <div class="workflow-header-text">
-          <h3 class="workflow-title">{{ assembly.name }}</h3>
-          {% if assembly.description %}
-            <p class="workflow-subtitle">{{ assembly.description }}</p>
-          {% endif %}
-          <div class="workflow-status">
-            <span class="workflow-indicator" title="Stato lavorazione">
-              {{ '🟢 Pronto' if docs_ready and assoc_ready else '🔴 In attesa' }}
-            </span>
-          </div>
-        </div>
-      </header>
       <div class="workflow-body">
         <div class="workflow-main">
           <div class="workflow-block">

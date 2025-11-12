@@ -21,78 +21,407 @@
 {% block content %}
 <section class="section">
   <h2 class="section-title">Produzione</h2>
-  {# Responsive list of production boxes.
-     Each box is rendered as a card with its code, product name,
-     quantity of items and current status.  The "Apri" button
-     navigates to the box detail page where operators can perform
-     the final loading via the "Carica" action.  On small screens
-     the cards stack vertically to ensure readability. #}
-  {% if boxes|length == 0 %}
+  <p class="section-subtitle muted">Seleziona una categoria per vedere i box prenotati e completare il carico.</p>
+  {% if categories|length == 0 %}
     <p class="muted">Nessun box di produzione presente.</p>
   {% else %}
-    <div class="box-list" style="display:flex; flex-direction:column; gap:12px;">
-      {% for box in boxes %}
-        {# Determine the first product associated with this box.  A box may contain
-           multiple stock items of the same product.  Use the first item's
-           product to obtain the article code and image. #}
-        {% set prod = box.stock_items[0].product if box.stock_items else None %}
-        <div class="glass" style="padding:12px; border-radius:12px; width:100%; position:relative; cursor:pointer;" onclick="window.location.href='{{ url_for('production.production_box_view', box_id=box.id) }}'">
-          {# Badge indicating the box type: P=parte, C=commerciale, A=assieme.  Placed centrally over the card. #}
-          {% set type_letter = 'P' %}
-          {% set type_color = '#10b981' %}
-          {% if box.box_type == 'ASSIEME' %}
-            {% set type_letter = 'A' %}
-            {% set type_color = '#3b82f6' %}
-          {% elif box.box_type == 'COMMERCIALE' %}
-            {% set type_letter = 'C' %}
-            {% set type_color = '#ec4899' %}
-          {% endif %}
-          <span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:{{ type_color }}; color:white; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:bold;">
-            {{ type_letter }}
-          </span>
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            {# Product image on the left.  If the product defines an image_filename
-               use it; otherwise fall back to a placeholder gear icon. #}
-            <div style="flex-shrink:0; width:64px; height:64px; display:flex; align-items:center; justify-content:center;">
-              {# Display the component image when available.  Use the root_image_filename
-                 property attached to the box; if absent, fall back to the
-                 product image and finally to the gear placeholder. #}
-              {% if box.root_image_filename %}
-                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + box.root_image_filename) }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
-              {% else %}
-                <img src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
-              {% endif %}
-            </div>
-            <div style="flex:1 1 auto; min-width:160px;">
-              {# Show the component (structure) name as the main title.  When
-                 root_structure is available use its name; otherwise fall back
-                 to the product name or box code. #}
-              <h3 style="margin:0 0 4px; font-size:18px;">
-                {% if box.root_structure and box.root_structure.name %}
-                  {{ box.root_structure.name }}
-                {% elif prod %}
-                  {{ prod.name }}
-                {% else %}
-                  {{ box.code }}
-                {% endif %}
-              </h3>
-              <p style="margin:0; font-size:14px; color:var(--text-muted);">
-                Box: {{ box.code }}
-              </p>
-              <p style="margin:0; font-size:14px; color:var(--text-muted);">
-                Quantità: {{ box.stock_items|length }}
-              </p>
-              <p style="margin:0; font-size:14px; color:var(--text-muted);">
-                Stato: {{ box.status }}
-              </p>
-            </div>
-            <div style="flex-shrink:0;">
-              {# The entire card is clickable, so no separate Apri button is needed #}
-            </div>
-          </div>
-        </div>
+    <div class="tab-switcher glass">
+      {% for cat in categories %}
+        {% set count = grouped_boxes.get(cat.key, []) | length %}
+        <button class="tab-link{{ ' active' if loop.first else '' }}" type="button" data-tab-target="{{ cat.key }}">
+          <span class="icon">{{ cat.icon }}</span>
+          <span class="label">{{ cat.label }}</span>
+          <span class="badge">{{ count }}</span>
+        </button>
       {% endfor %}
     </div>
+
+    {% set status_colors = {'APERTO': '#38bdf8', 'IN_CARICO': '#fbbf24', 'COMPLETATO': '#22c55e', 'ARCHIVIATO': '#a855f7'} %}
+    {% set type_colors = {'ASSIEME': '#3b82f6', 'PARTE': '#10b981', 'COMMERCIALE': '#ec4899', 'PRODOTTO': '#f97316', 'ALTRO': '#6366f1'} %}
+    {% set type_letters = {'ASSIEME': 'A', 'PARTE': 'P', 'COMMERCIALE': 'C', 'PRODOTTO': 'F', 'ALTRO': '?'} %}
+
+    {% for cat in categories %}
+      {% set cat_boxes = grouped_boxes.get(cat.key, []) %}
+      <section class="tab-panel glass{{ ' active' if loop.first else '' }}" data-tab-panel="{{ cat.key }}">
+        <header class="panel-header">
+          <div class="panel-title">
+            <span class="panel-icon">{{ cat.icon }}</span>
+            <div>
+              <h3>{{ cat.label }}</h3>
+              <p class="muted">{{ cat.description }}</p>
+            </div>
+          </div>
+          <span class="panel-count">{{ cat_boxes|length }} box in preparazione</span>
+        </header>
+
+        {% if cat_boxes %}
+          <div class="box-grid">
+            {% for box in cat_boxes %}
+              {% set prod = box.stock_items[0].product if box.stock_items else None %}
+              {% set highlight = focused_box_id and box.id == focused_box_id %}
+              <a id="box-{{ box.id }}" class="box-card{% if highlight %} highlight{% endif %}" data-box-type="{{ box.box_type }}" href="{{ url_for('production.production_box_view', box_id=box.id) }}">
+                <span class="box-type-badge" style="background:{{ type_colors.get(box.box_type, '#6366f1') }};">
+                  {{ type_letters.get(box.box_type, '?') }}
+                </span>
+                <div class="box-thumb">
+                  {% if box.root_image_filename %}
+                    <img loading="lazy" src="{{ url_for('static', filename='uploads/' + box.root_image_filename) }}" alt="{{ box.root_structure.name if box.root_structure else '' }}">
+                  {% else %}
+                    <img src="{{ url_for('static', filename='img/gear.svg') }}" alt="" class="placeholder">
+                  {% endif %}
+                </div>
+                <div class="box-details">
+                  <h4>
+                    {% if box.root_structure and box.root_structure.name %}
+                      {{ box.root_structure.name }}
+                    {% elif prod %}
+                      {{ prod.name }}
+                    {% else %}
+                      {{ box.code }}
+                    {% endif %}
+                  </h4>
+                  <p class="muted">Box {{ box.code }}</p>
+                  <div class="box-meta">
+                    <span class="meta-item">
+                      <strong>Quantità</strong>
+                      <span>{{ box.stock_items|length }}</span>
+                    </span>
+                    <span class="meta-item">
+                      <strong>Stato</strong>
+                      {% set st = box.status or '' %}
+                      <span class="status-pill" style="background:{{ status_colors.get(st, '#c084fc') }}20; color:{{ status_colors.get(st, '#c084fc') }};">
+                        {{ st }}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted empty-state">Nessun box in questa categoria.</p>
+        {% endif %}
+      </section>
+    {% endfor %}
   {% endif %}
 </section>
+
+<style>
+.section-subtitle {
+  margin-top: -8px;
+  margin-bottom: 20px;
+}
+
+.tab-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.tab-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 10px 18px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.tab-link .icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tab-link .badge {
+  background: rgba(148, 163, 184, 0.18);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.tab-link.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+}
+
+.tab-link.active .badge {
+  background: rgba(59, 130, 246, 0.32);
+}
+
+.tab-link:hover:not(.active) {
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.tab-panel {
+  display: none;
+  margin-top: 16px;
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.tab-panel.active {
+  display: block;
+  animation: fadeInTab 220ms ease;
+}
+
+@keyframes fadeInTab {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.panel-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.panel-title h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.panel-title p {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+.panel-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.panel-count {
+  font-size: 14px;
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.box-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.box-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  min-height: 200px;
+}
+
+.box-card.highlight,
+.box-card:target {
+  border-color: rgba(56, 189, 248, 0.68);
+  box-shadow: 0 16px 36px rgba(56, 189, 248, 0.35);
+}
+
+.box-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.6);
+}
+
+.box-type-badge {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.45);
+}
+
+.box-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  background: rgba(148, 163, 184, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.box-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.box-thumb img.placeholder {
+  filter: invert(1);
+  opacity: 0.55;
+}
+
+.box-details h4 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.box-details p {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+
+.box-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.meta-item span {
+  font-size: 16px;
+  color: var(--text-primary, #fff);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.empty-state {
+  margin: 32px 0 12px;
+  text-align: center;
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  .tab-switcher {
+    padding: 10px;
+  }
+
+  .box-card {
+    padding: 18px;
+  }
+
+  .box-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const buttons = Array.from(document.querySelectorAll('[data-tab-target]'));
+  const panels = Array.from(document.querySelectorAll('[data-tab-panel]'));
+  if (!buttons.length || !panels.length) {
+    return;
+  }
+
+  const panelKeys = new Set(panels.map((panel) => panel.getAttribute('data-tab-panel')));
+  const initialTab = {{ initial_tab|tojson }};
+  const focusedBoxId = {{ focused_box_id|tojson }};
+
+  function activateTab(target) {
+    buttons.forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab-target') === target);
+    });
+    panels.forEach((panel) => {
+      panel.classList.toggle('active', panel.getAttribute('data-tab-panel') === target);
+    });
+    try {
+      sessionStorage.setItem('productionTab', target);
+    } catch (err) {
+      // ignore storage errors
+    }
+  }
+
+  let initial = buttons[0].getAttribute('data-tab-target');
+  if (initialTab && panelKeys.has(initialTab)) {
+    initial = initialTab;
+  } else {
+    try {
+      const stored = sessionStorage.getItem('productionTab');
+      if (stored && panelKeys.has(stored)) {
+        initial = stored;
+      }
+    } catch (err) {
+      // ignore storage errors
+    }
+  }
+
+  activateTab(initial);
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-tab-target');
+      activateTab(target);
+    });
+  });
+
+  if (focusedBoxId) {
+    const target = document.getElementById(`box-${focusedBoxId}`);
+    if (target) {
+      try {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        target.scrollIntoView();
+      }
+      target.classList.add('highlight');
+      setTimeout(() => target.classList.remove('highlight'), 3200);
+    }
+  }
+});
+</script>
 {% endblock %}

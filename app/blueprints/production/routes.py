@@ -8,10 +8,9 @@ parent assemblies are recalculated automatically so that the warehouse
 dashboard reflects the number of complete units that can be assembled.
 """
 
-from typing import List
 import os
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from flask_login import login_required, current_user
 
 from ...extensions import db
@@ -19,6 +18,21 @@ from ...models import Structure, InventoryLog, ProductionBox
 
 
 production_bp = Blueprint('production', __name__, template_folder='../../templates')
+
+
+@production_bp.before_request
+def _highlight_production_tab() -> None:
+    """Ensure the navigation highlights the production module.
+
+    When operators open a production box detail page (served through this
+    blueprint but ultimately rendered by the inventory view) the layout
+    would previously fall back to the inventory module because the
+    underlying template relied solely on the request endpoint.  Setting a
+    ``g.active_module`` flag allows the base template to keep the
+    "Produzione" tab highlighted throughout the workflow.
+    """
+
+    g.active_module = 'production'
 
 
 def _update_parent_assemblies(part: Structure) -> None:
@@ -145,7 +159,94 @@ def index():
         for b in boxes:
             setattr(b, 'root_structure', None)
             setattr(b, 'root_image_filename', None)
-    return render_template('production/index.html', boxes=boxes)
+
+    # ------------------------------------------------------------------
+    # Group boxes by their declared type so the UI can present dedicated
+    # sections for assemblies, mechanical parts, commercial parts and
+    # finished products.  Provide human-friendly labels, icons and short
+    # descriptions for each category.  Any unexpected box types fall back
+    # to an "Altri" bucket to avoid hiding data.
+    category_definitions = [
+        {
+            'key': 'ASSIEME',
+            'label': 'Assiemi',
+            'icon': '🧩',
+            'description': 'Assemblaggi in attesa di completamento.',
+        },
+        {
+            'key': 'PARTE',
+            'label': 'Parti',
+            'icon': '⚙️',
+            'description': 'Componenti meccanici prenotati per il carico.',
+        },
+        {
+            'key': 'COMMERCIALE',
+            'label': 'Parti a commercio',
+            'icon': '🛒',
+            'description': 'Articoli commerciali pronti per la produzione.',
+        },
+        {
+            'key': 'PRODOTTO',
+            'label': 'Prodotti',
+            'icon': '📦',
+            'description': 'Prodotti finiti da completare o collaudare.',
+        },
+    ]
+    grouped_boxes: dict[str, list[ProductionBox]] = {c['key']: [] for c in category_definitions}
+    uncategorised: list[ProductionBox] = []
+    for box in boxes:
+        box_key = getattr(box, 'box_type', None)
+        if box_key in grouped_boxes:
+            grouped_boxes[box_key].append(box)
+        else:
+            uncategorised.append(box)
+    if uncategorised:
+        category_definitions.append(
+            {
+                'key': 'ALTRO',
+                'label': 'Altri',
+                'icon': '🗃️',
+                'description': 'Box con tipologie non classificate.',
+            }
+        )
+        grouped_boxes['ALTRO'] = uncategorised
+
+    # Determine which tab should be active.  Accept a ``tab`` query parameter
+    # and validate it against the known category keys.  When a ``box`` query
+    # parameter is provided, use the corresponding box type as a fallback so
+    # that deep links like ``/production?box=123`` automatically reveal the
+    # correct section.
+    requested_tab = request.args.get('tab', type=str)
+    requested_box_id = request.args.get('box', type=int)
+    valid_keys = {c['key'] for c in category_definitions}
+    initial_tab = None
+    if requested_tab:
+        candidate = (requested_tab or '').strip().upper()
+        if candidate in valid_keys:
+            initial_tab = candidate
+    focused_box = None
+    if requested_box_id:
+        for b in boxes:
+            try:
+                if b.id == requested_box_id:
+                    focused_box = b
+                    break
+            except Exception:
+                continue
+    if focused_box and not initial_tab:
+        candidate = getattr(focused_box, 'box_type', None)
+        if candidate in valid_keys:
+            initial_tab = candidate
+
+    return render_template(
+        'production/index.html',
+        boxes=boxes,
+        categories=category_definitions,
+        grouped_boxes=grouped_boxes,
+        active_module='production',
+        initial_tab=initial_tab,
+        focused_box_id=requested_box_id,
+    )
 
 
 @production_bp.route('/add/<int:part_id>', methods=['POST'])

@@ -1,0 +1,1433 @@
+/*
+ * Theme tokens
+ *
+ * The application exposes a theme toggle (light / dark / system) via a button in the header.
+ * In the original starter the CSS relied solely on the browser’s `prefers-color-scheme` media
+ * query. That meant clicking the toggle had no visible effect because there were no rules
+ * associated with the `data-theme` attribute set on the `<html>` element.  To make the toggle
+ * functional we define separate CSS custom property sets for each theme.  The `:root`
+ * definition below holds the default “light” palette.  We then mirror these variables inside
+ * `html[data-theme="light"]` so explicit light selection always wins over OS preferences.
+ *
+ * For dark mode we copy the values previously defined in the `prefers-color-scheme: dark`
+ * block into an `html[data-theme="dark"]` rule.  This ensures that when the user selects
+ * dark mode, the variables override those defined on the root.  Finally, we leave the
+ * `prefers-color-scheme` media query in place so that `data-theme="system"` falls back
+ * gracefully to the user’s operating system setting without duplicating values.
+ */
+
+:root{
+  /* spacing and geometry */
+  --radius: 14px;
+  --gap: 16px;
+  /* light palette */
+  --glass-bg: rgba(255,255,255,.10);
+  --glass-stroke: rgba(255,255,255,.25);
+  --text: #0b0b0c;
+  --muted: #6b7280;
+  --bg: #f6f7fb;
+  --card: rgba(255,255,255,.6);
+  --shadow: 0 10px 30px rgba(2,6,23,.15);
+}
+
+/* explicit light theme overrides.  Without these, selecting “light” after being in
+ * dark mode would not reset the variables defined on the `<html>` element. */
+html[data-theme='light']{
+  --glass-bg: rgba(255,255,255,.10);
+  --glass-stroke: rgba(255,255,255,.25);
+  --text: #0b0b0c;
+  --muted: #6b7280;
+  --bg: #f6f7fb;
+  --card: rgba(255,255,255,.6);
+  --shadow: 0 10px 30px rgba(2,6,23,.15);
+  /* hint to the browser which color schemes are supported when in light mode */
+  color-scheme: light dark;
+}
+
+/* dark theme variables replicate those previously defined in the media query below */
+html[data-theme='dark']{
+  /* Dark theme palette: provide more contrast on selectable elements */
+  --glass-bg: rgba(17,25,40,.50);
+  --glass-stroke: rgba(255,255,255,.08);
+  --text: #f8fafc;
+  --muted: #93a3b3;
+  --bg: #0b0e13;
+  --card: rgba(255,255,255,.08);
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  color-scheme: dark light;
+}
+
+/* keep automatic dark mode fallback for system theme.  When `data-theme` is set to
+ * `system` the media query will override the root variables based on the user’s
+ * operating system preference. */
+@media (prefers-color-scheme: dark){
+  :root{
+    --glass-bg: rgba(17,25,40,.50);
+    --glass-stroke: rgba(255,255,255,.08);
+    --text: #f8fafc;
+    --muted: #93a3b3;
+    --bg: #0b0e13;
+    --card: rgba(255,255,255,.08);
+    --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol";
+  color: var(--text);
+  background: var(--bg);
+}
+.container{ max-width:1100px; margin: 90px auto 60px; padding: 0 16px; }
+.bg-aurora{
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(1200px 600px at 10% 10%, #8ec5ff33 0%, transparent 50%),
+              radial-gradient(1000px 500px at 90% 20%, #ffa3e533 0%, transparent 50%),
+              radial-gradient(1200px 600px at 50% 90%, #a7f3d033 0%, transparent 40%);
+  filter: blur(30px) saturate(120%);
+  animation: float 16s linear infinite alternate;
+  z-index: -1;
+}
+@keyframes float{ from{ transform: translateY(-2%) } to{ transform: translateY(2%) } }
+.glass{
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.app-header{
+  /* Position the header at the very top of the viewport.  Remove side offsets so it spans the full width. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px; display:flex; align-items:center; gap:16px; padding: 0 12px;
+  /* Ensure the header stays above all other page content.  Without a
+     z-index, other fixed or relative elements could overlap the
+     navigation bar when scrolling. */
+  z-index: 1000;
+}
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand .logo{
+  /* Ensure the header logo preserves its original aspect ratio.
+     Specify only the height so the width scales automatically based on the image dimensions. */
+  /* Increase the size of the header logo slightly while maintaining aspect ratio */
+  height: 40px;
+  width: auto;
+}
+.brand .brand-name{ font-weight:600; letter-spacing:.2px; }
+.nav-desktop{ margin-left: 12px; display:none; gap:6px; }
+.nav-desktop .nav-link{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 12px;
+  border-radius: 10px;
+  text-decoration:none;
+  color:inherit;
+  transition: transform .2s ease, background .2s ease, font-weight .2s ease;
+}
+.nav-desktop .nav-link:hover{ transform: translateY(-1px); background: var(--card); }
+
+/* highlight the active link in the navigation */
+.nav-desktop .nav-link.active,
+.nav-mobile .nav-link.active{
+  font-weight:600;
+  background: var(--card);
+}
+
+/* simple icon styling */
+.nav-icon{
+  display:inline-block;
+  width: 1em;
+  text-align:center;
+}
+.header-actions{ margin-left:auto; display:flex; align-items:center; gap:10px; }
+.hamburger{ display:inline-flex; margin-left:6px; border:0; background:transparent; font-size:20px; }
+@media(min-width: 900px){ .nav-desktop{ display:flex; } .hamburger{ display:none; } }
+.nav-mobile{ position: fixed; top: 84px; right: 12px; left:12px; display:none; flex-direction:column; padding: 10px; }
+
+/* Keep the mobile navigation on top of other elements.  When the menu
+   is opened it should overlay content such as dialogs and cards. */
+.nav-mobile{
+  z-index: 999;
+}
+.nav-mobile .nav-link{
+  display:block;
+  padding:12px;
+  border-radius:10px;
+  text-decoration:none;
+  color:inherit;
+}
+.nav-mobile.show{ display:flex; }
+.btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  gap:8px; padding:10px 14px;
+  border-radius: 12px; border:1px solid var(--glass-stroke);
+  background: var(--card); cursor:pointer; text-decoration:none; color:inherit;
+  transition: transform .2s ease, filter .2s ease, background .2s ease;
+}
+.btn.small{
+  padding:6px 10px;
+  font-size:14px;
+}
+.btn:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+.btn.primary{ background: linear-gradient(180deg, #4f46e5, #4338ca); color:white; border:0; }
+.btn.success{ background: linear-gradient(180deg, #10b981, #059669); color:white; border:0; }
+.btn.ghost{ background: transparent; border:1px solid var(--glass-stroke); }
+.btn.full{ width:100%; }
+/*
+ * Visually highlight a row after a stock update.  When the application
+ * redirects back to a listing with a fragment like ``#part-42`` the
+ * corresponding element temporarily receives this class.  The highlight
+ * uses a gentle background pulse and an outline to draw the user's eye
+ * without being too distracting.  It fades away automatically after
+ * two seconds.  This behaviour is paired with JavaScript in the
+ * inventory templates that adds and then removes the class.
+ */
+.highlight-row {
+  position: relative;
+  animation: row-pulse 2s ease-out;
+}
+
+@keyframes row-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.6); }
+  50%  { box-shadow: 0 0 0 6px rgba(253, 224, 71, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(253, 224, 71, 0); }
+}
+/* Improve visibility of radio buttons.  Without an explicit accent color some browsers render
+   radio buttons with a low‑contrast color in dark mode, making the selected state hard to see.
+   The accent‑color property is supported in modern browsers and allows us to set a custom color
+   for the selected state. */
+input[type="radio"]{
+  accent-color: #4338ca;
+}
+.section{ margin-top: 12px; }
+.section-title{ font-size: 26px; margin: 10px 0; }
+.section-subtitle{ color: var(--muted); margin-top: -6px; }
+.grid{ display:grid; gap: var(--gap); }
+.grid-2{ grid-template-columns: repeat(1, minmax(0,1fr)); }
+.grid-3{ grid-template-columns: repeat(1, minmax(0,1fr)); }
+@media(min-width: 700px){ .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media(min-width: 950px){ .grid-3{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.card{ padding: 16px 16px 22px; }
+.card.tall{ min-height:200px; }
+.card-title{ margin: 4px 0 10px; font-weight:600; }
+
+/*
+ * Interactive animation for product cards on the products overview page.
+ * When hovering a card it scales up slightly to draw attention.  The
+ * transition property ensures the scaling happens smoothly rather than
+ * abruptly.  Adjust the scale factor or duration to tweak the effect.
+ */
+.product-card{
+  /* Ensure smooth scaling when hovering */
+  transition: transform 0.25s ease-in-out;
+}
+.product-card:hover{
+  transform: scale(1.03);
+}
+.link-card{ text-decoration:none; color:inherit; }
+.placeholder{ height: 120px; border-radius: 12px; background: var(--card); border:1px dashed var(--glass-stroke); }
+.shimmering{ position: relative; overflow:hidden; }
+.shimmering::after{
+  content:""; position:absolute; inset:0; transform: translateX(-100%);
+  background: linear-gradient(120deg, transparent, #ffffff33, transparent);
+  animation: shimmer 1.8s infinite;
+}
+@keyframes shimmer{ 100% { transform: translateX(100%); } }
+.list{ padding: 8px; }
+
+/*
+ * Evidenzia temporaneamente le righe delle tabelle o i nodi della distinta.
+ * Quando un elemento con id "component-<id>" riceve la classe ``highlight``
+ * tramite JavaScript, viene applicato un colore di sfondo giallo semi‑trasparente
+ * per alcuni secondi.  L'animazione svanisce gradualmente per non interferire
+ * con altre interazioni dell'utente.
+ */
+.highlight {
+  animation: highlight-bg 4s ease-in-out;
+  background-color: rgba(255, 255, 0, 0.25);
+}
+@keyframes highlight-bg {
+  0% { background-color: rgba(255, 255, 0, 0.35); }
+  100% { background-color: transparent; }
+}
+.list-row{
+  /* Use a two‑column grid for key/value rows.  The first column grows and holds
+     all textual information; the second column houses an action button. */
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding: 10px; border-radius: 12px; margin-bottom: 8px; background: var(--card);
+}
+
+/* Stack name and subtitle inside the first column of list rows */
+.list-info{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.list-title{ font-weight:600; }
+.list-subtitle{ color: var(--muted); font-size: 13px; }
+.form{ display:flex; flex-direction:column; gap: 12px; }
+.field{ display:flex; flex-direction:column; gap:6px; }
+/* Style inputs, textareas and selects but exclude checkboxes so they retain
+   the native checkbox appearance (otherwise users cannot see or interact with
+   them). */
+.field input:not([type="checkbox"]):not([type="radio"]), .field textarea, .field select{
+  border-radius: 12px;
+  padding:12px 14px;
+  background: var(--card);
+  border:1px solid var(--glass-stroke);
+  color: inherit;
+  outline: none;
+  /* Remove default OS styling so our custom colors apply consistently */
+  -webkit-appearance: none;
+  appearance: none;
+}
+.checkbox{ display:flex; align-items:center; gap: 8px; }
+.field select option,
+.field select optgroup{
+  background: var(--bg);
+  color: var(--text);
+}
+.tree{ padding: 6px; }
+.tree-node{ margin: 6px 0; }
+.tree ul{ list-style: none; padding-left: 18px; }
+.tree li{ margin: 6px 0; }
+.tree summary{ cursor: pointer; }
+.app-footer{ text-align:center; padding: 30px 0; color: var(--muted); }
+.assembly-row{
+  color: #c0392b; /* rosso per gli assiemi */
+}
+.part-row{
+  color: #2c3e50; /* nero per le parti */
+}
+.commercial-row{
+  color: #27ae60; /* verde per le parti a commercio */
+}
+.auth-body{ min-height: 100vh; display:grid; place-items:center; }
+.login-wrap{ width: 100%; padding: 18px; }
+.login-card{ max-width: 380px; margin: 0 auto; padding: 24px 20px; text-align:center; }
+.login-brand .logo.lg{
+  /* Ensure the login page logo preserves its original aspect ratio.
+     Specify only the height so the width scales automatically. */
+  /* Increase the size of the login logo while preserving aspect ratio */
+  height: 70px;
+  width: auto;
+}
+.login-brand h1{ margin: 8px 0 2px; font-size: 22px; }
+.login-brand .subtitle{ color: var(--muted); margin:0 0 18px; }
+.flash-stack{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  /* Display flash messages as fixed overlays so they do not push the page
+     content downward.  Position them near the top right of the viewport
+     and give them a high z-index so they appear above other elements. */
+  position:fixed;
+  top:80px;
+  right:20px;
+  z-index:1000;
+  margin-bottom:0;
+  max-width:320px;
+}
+.flash{ padding: 10px 12px; border-radius: 10px; }
+.flash.info{ background: #3b82f633; }
+.flash.success{ background: #10b98133; }
+.flash.warning{ background: #f59e0b33; }
+.flash.danger{ background: #ef444433; }
+.muted{ color: var(--muted); }
+code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
+
+/*
+ * Tables used for lists of types and nodes and other tabular data.
+ * They inherit the same colour palette used throughout the app.
+ */
+.table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top: 10px;
+  /* center tables within their container */
+  margin-left: auto;
+  margin-right: auto;
+}
+.table th,
+.table td{
+  padding: 8px 12px;
+  text-align:left;
+  /* Centra verticalmente il contenuto delle celle per garantire
+     un allineamento uniforme delle righe.  In precedenza le
+     celle erano allineate in alto, causando disallineamenti
+     soprattutto per le righe contenenti controlli di modulo. */
+  vertical-align: middle;
+}
+
+/* Make form controls inside tables stretch to fill the available cell width.  Without
+ * this rule the inputs would shrink to their intrinsic size, causing uneven
+ * spacing and misalignment when the table is resized.  We also set
+ * box-sizing to border-box to ensure padding and borders are included in
+ * the width calculation.
+ */
+.table select,
+.table input[type="text"],
+.table input[type="number"]{
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: block;
+}
+.table th{
+  color: var(--muted);
+  font-size:14px;
+  font-weight:600;
+}
+/*
+ * Remove the alternating white background on table rows.  Previously the
+ * odd numbered rows used a semi‑transparent white card colour which
+ * created a large white rectangle behind each row.  To achieve a
+ * cleaner look the row backgrounds are now transparent by default and
+ * only change on hover.  The hover effect uses the glass background
+ * variable to provide a subtle highlight without introducing a solid
+ * block of colour.
+ */
+/*
+ * Override alternating row styling for tables across the application.
+ * Previously the odd/even rows used different backgrounds (card and
+ * translucent glass) which produced a distracting white rectangle effect.
+ * To achieve a cleaner look we remove the solid backgrounds entirely
+ * and apply only a subtle tint on hover.  These rules apply to all
+ * tables used in product, inventory and admin sections.  For cases
+ * where more contrast is desired the card backgrounds should be
+ * applied directly to the table or container rather than individual
+ * rows.
+ */
+.table tr:nth-child(odd),
+.table tr:nth-child(even) {
+  /* Transparent background for all rows; the parent card or container
+     supplies the base colour. */
+  background: transparent;
+}
+/* Highlight the entire row on hover with the glass background colour */
+.table tr:hover {
+  background: var(--glass-bg);
+}
+
+/* Increase horizontal spacing before the revision column in traditional
+   tables.  Most data tables in the warehouse and anagrafiche modules
+   follow the column order: number, image, code, description, revision,
+   category, quantity and actions.  Adding extra left padding to the
+   fifth column (index starts at 1) separates the revision value from
+   the description and improves readability. */
+.table th:nth-child(5),
+.table td:nth-child(5) {
+  padding-left: 16px;
+}
+
+/*
+ * Component tree styles for the product detail view.
+ * The component tree replaces the previous table for the "Componenti del prodotto"
+ * section.  It uses <details> and <summary> elements to allow users to
+ * expand and collapse nested components smoothly.  Each node is styled like
+ * a card with a grid layout to align number, image, code, description,
+ * category, quantity and actions.  The default marker provided by the
+ * browser is hidden and replaced with a custom arrow that rotates when
+ * expanded.
+ */
+.component-tree {
+  margin-top: 10px;
+}
+
+/*
+ * Remove the solid card background from component nodes in the product
+ * detail tree.  The previous implementation used var(--card) as the
+ * background, which created a bright rectangle that stood out against
+ * the dark gradient.  Setting the background to transparent allows the
+ * underlying gradient or parent card to show through, while the
+ * border and hover state provide sufficient separation.  The border
+ * remains to delineate each node and maintain a card-like structure.
+ */
+.component-node {
+  border: 1px solid var(--glass-stroke);
+  /* Use a more translucent background for component nodes.  Previously
+     component-node cards used the --card colour which made rows
+     appear solid and inconsistent with the tables in other modules.
+     Switching to --glass-bg provides a subtler backdrop aligned with
+     the glass effect used throughout the warehouse and product pages. */
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.component-node > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  transition: background 0.2s ease;
+  /* Use flexbox to vertically center the arrow and the content row.  Without
+     flexbox, the pseudo‑element arrow is aligned to the baseline and the
+     subsequent grid row sits lower, creating misalignment. */
+  display: flex;
+  align-items: center;
+}
+
+/* Ensure the component-row inside the summary expands to fill the remaining
+   space when the summary uses flexbox.  Without this rule the row can
+   shrink based on its intrinsic width, which shifts the column contents. */
+.component-node > summary > .component-row {
+  flex-grow: 1;
+  width: 100%;
+}
+
+/* Highlight node summaries on hover for better affordance */
+.component-node > summary:hover {
+  background: var(--glass-bg);
+}
+
+/* Hide the default marker for <details> */
+.component-node summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Custom arrow for the expand/collapse indicator */
+.component-node summary::before {
+  content: '►';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+  vertical-align: middle;
+  /* Align the arrow vertically with the text/content of the row.  Without
+     setting vertical-align the arrow sits on the baseline, causing the
+     subsequent grid to appear lower. */
+  vertical-align: middle;
+}
+.component-node[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* Grid layout for each row in the component tree */
+/*
+ * Layout for a row in the component tree or inventory table.  Use a grid
+ * with eight columns corresponding to: number, image, code, description,
+ * revision, category, stock quantity and actions.  The column widths have
+ * been rebalanced to dedicate more space to the code and description
+ * columns, preventing text from overlapping adjacent cells.  The final
+ * actions column has been reduced and the image column trimmed slightly.
+ */
+/*
+ * Layout for a row in the component tree or inventory table.  To
+ * balance space among columns without leaving excessive gaps, the grid
+ * uses a combination of percentage widths and a flexible unit for the
+ * description.  The columns are: number (5%), image (10%), code (18%),
+ * description (flexible), revision (7%), category (12%), quantity (6%)
+ * and actions (14%).  The description column uses a fractional unit
+ * (1fr) which consumes the remaining width after the fixed percentages.
+ * A smaller gap reduces the visual spacing between columns.
+ */
+/*
+ * Define the layout for component rows used across the warehouse (magazzino)
+ * and product detail (anagrafiche) pages.  The existing grid allocated
+ * fixed percentages to the number, image, code, revision, category,
+ * quantity and actions columns and left the description column flexible
+ * (1fr).  Users reported that the text and headings appeared cramped
+ * together, so the horizontal gap between columns has been increased
+ * from 6px to 12px.  This change provides additional breathing room
+ * without significantly affecting the overall width allocation.  The
+ * underlying grid-template-columns remain unchanged to preserve
+ * alignment between headers and rows.
+ */
+.component-row {
+  display: grid;
+  /* Unified column distribution: narrow number and actions columns, retain
+     reasonable widths for image and code, allocate more space to the
+     description (auto) and moderate space to revision, category and quantity.
+     This layout ensures the description remains readable while the
+     actions column stays anchored at the far right.  The order is:
+       number (#), image, code, description (auto), revision, category,
+       quantity (stock), actions. */
+  grid-template-columns: 4% 14% 14% auto 8% 8% 6% 18%;
+  align-items: center;
+  /* Reduce the gap slightly to 10px to reclaim horizontal space while
+     still providing clear separation between columns. */
+  gap: 10px;
+}
+
+.component-row > .col-image {
+  width: 100%;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.component-row > .col-image img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+/* Prevent long codes or descriptions from overlapping into adjacent columns.
+   By constraining overflow and using ellipsis, text that exceeds its
+   allocated width will be truncated gracefully instead of wrapping over
+   other cells. */
+.component-row > .col-code,
+.component-row > .col-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Add right padding to increase the distance between the description
+     column and the revision column.  Without this padding the two
+     columns appeared too close together even though there is space on
+     the right side of the row. */
+  padding-right: 12px;
+}
+
+/* Ensure the numbering column contents are vertically centred */
+.component-row > .col-number {
+  display: flex;
+  align-items: center;
+}
+
+/* Centre the revision column contents */
+.component-row > .col-revision {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* No additional left margin is needed here because the unified
+     column distribution and column gaps provide sufficient separation
+     between the description and revision columns. */
+  margin-left: 0;
+}
+
+/* Container for the actions column: display buttons in a row and centre them vertically */
+/*
+ * Adjust spacing between action buttons in the product component tree.  The
+ * gap and margin previously set to 4px resulted in buttons appearing
+ * spaced too far apart.  Reduce the gap to 2px so that the "Modifica",
+ * "Sostituisci" and "Elimina" buttons sit closer together, as requested.
+ */
+.component-row > .col-actions {
+  display: flex;
+  align-items: center;
+  /* Align the action buttons to the far right of their column.  This
+     prevents the buttons from crowding the quantity column and makes
+     better use of available horizontal space. */
+  justify-content: flex-end;
+  gap: 2px;
+  height: 100%;
+  /* Reduce left padding now that the buttons are right-aligned */
+  padding-left: 8px;
+}
+
+/*
+ * Reduce the right margin between individual action buttons.  A smaller
+ * margin (2px) keeps the buttons almost touching while still preserving
+ * a slight visual separation.  Without this rule the default 4px
+ * margin would override the reduced gap above.
+ */
+.component-row .col-actions .btn {
+  margin-right: 2px;
+}
+
+/* (Removed duplicate definitions for image size and actions alignment; see updated definitions above) */
+
+/* Increase arrow size and hide it for leaf nodes */
+.component-node summary::before {
+  font-size: 16px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.component-node[data-leaf] summary::before {
+  content: '';
+  margin-right: 8px;
+}
+
+/* Styles for children container: indent and separate nested lists */
+.children {
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1px dashed var(--glass-stroke);
+  margin-bottom: 8px;
+}
+
+/*
+ * Reset the rotation of the custom expand/collapse arrow on collapsed
+ * component nodes. Without explicitly specifying a transform for the
+ * non‑open state the pseudo‑element can inherit an unintended rotation
+ * from earlier rules when nested details elements are toggled. This
+ * results in inner arrows remaining pointed downward even when their
+ * parent nodes are collapsed. Applying an explicit transform here
+ * ensures each arrow starts in the default orientation and only rotates
+ * when its own <details> element gains the [open] attribute.
+ */
+.component-node:not([open]) > summary::before {
+  /* Rotate the custom arrow back to its default (pointing right) when
+     the corresponding <details> is closed. This rule has higher
+     specificity than earlier definitions and therefore overrides any
+     inherited transform on nested nodes. */
+  transform: rotate(0deg);
+}
+
+/* Header bar for the component tree.  It uses the same grid layout as
+   component rows and highlights the column titles. */
+.component-header .component-row {
+  display: grid;
+  /* Match the unified column distribution used for component rows.  Reduce
+     the width of the number and actions columns and allocate more space
+     to the description.  Column order: number, image, code, description,
+     revision, category, quantity and actions. */
+  grid-template-columns: 4% 14% 14% auto 8% 8% 6% 18%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-weight: 600;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  /* Make the header bar stick to the top of the viewport when scrolling
+     the page.  This keeps the column titles visible while navigating a
+     long list of components. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+
+/* Ensure the actions column in the header aligns like other rows */
+.component-header .col-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* =====================================================================
+ * Unified component row and header layout
+ *
+ * Several pages defined slightly different grid layouts for the
+ * component-row used in warehouse and product views.  To eliminate
+ * inconsistencies in column widths and spacing, define a single layout
+ * here near the end of the stylesheet.  This will override earlier
+ * definitions due to the cascade.  The grid allocates:
+ *   - 4% to the number column
+ *   - 14% to the image
+ *   - 14% to the code
+ *   - the remaining width to the description (auto)
+ *   - 8% to the revision
+ *   - 8% to the category
+ *   - 6% to the quantity
+ *   - 20% to the actions
+ * A 10px gap separates columns for better readability, matching the
+ * spacing seen in the assemblies view.
+ */
+.component-row {
+  display: grid;
+  grid-template-columns: 4% 14% 14% auto 8% 8% 6% 18%;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Match the header bar to the same grid distribution.  Retain
+ * padding, font-weight and background styling defined earlier.  This
+ * rule overrides the alternative header definition further up. */
+.component-header .component-row {
+  display: grid;
+  /* Match the component-row grid to ensure headers align perfectly with
+     data rows.  Use the same unified column distribution defined for
+     .component-row above: number, image, code, description (auto),
+     revision, category, quantity and actions. */
+  grid-template-columns: 4% 14% 14% auto 8% 8% 6% 18%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-weight: 600;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+/* Tables in the products and admin modules should adopt a card-like
+ * appearance similar to the component nodes.  Use separated rows with
+ * glass backgrounds, border and radius to mimic the aesthetic of the
+ * parts/commercial lists.  Horizontal spacing between rows is achieved
+ * via border-spacing on the table element. */
+.table-responsive .table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+.table-responsive .table thead tr {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+}
+
+.table-responsive .table tbody tr {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+}
+
+.table-responsive .table td,
+.table-responsive .table th {
+  padding: 8px;
+}
+
+/*
+ * Component tree styles for the product detail view.
+ * The component tree replaces the previous table for the "Componenti del prodotto"
+ * section.  It uses <details> and <summary> elements to allow users to
+ * expand and collapse nested components smoothly.  Each node is styled like
+ * a card with a grid layout to align number, image, code, description,
+ * category, quantity and actions.  The default marker provided by the
+ * browser is hidden and replaced with a custom arrow that rotates when
+ * expanded.
+ */
+.component-tree {
+  margin-top: 10px;
+}
+
+.component-node {
+  /* Apply the glass effect to component rows.  Using the transparent
+     glass palette and backdrop filter aligns assembly and part cards
+     with the appearance of the product-specific parts and commercial
+     lists, which use the ``glass`` class.  Without this change,
+     component-node cards used the --card colour which made rows
+     appear more opaque than the desired design. */
+  border: 1px solid var(--glass-stroke);
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  overflow: hidden;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: var(--shadow);
+}
+
+.component-node > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  /* Use flexbox to vertically center the arrow and the content row. */
+  display: flex;
+  align-items: center;
+}
+
+/* Ensure the component-row inside the summary expands to fill the remaining
+   space when the summary uses flexbox. */
+.component-node > summary > .component-row {
+  flex-grow: 1;
+  width: 100%;
+}
+
+/* Hide the default marker for <details> */
+.component-node summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Custom arrow for the expand/collapse indicator */
+.component-node summary::before {
+  content: '►';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+}
+.component-node[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* Grid layout for each row in the component tree */
+.component-row {
+  display: grid;
+  /* Unified grid definition: narrow number and actions columns, retain
+     reasonable widths for image and code, allocate more space to the
+     description (auto) and moderate space to revision, category and
+     quantity.  This ensures descriptions remain readable and actions
+     appear at the far right. */
+  grid-template-columns: 4% 14% 14% auto 8% 8% 6% 18%;
+  align-items: center;
+  /* Slightly reduce the column gap to free up horizontal space. */
+  gap: 10px;
+}
+
+.component-row > .col-image {
+  width: 100%;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.component-row > .col-image img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+.component-row .col-actions .btn {
+  /* Smaller right margin for action buttons at the bottom of the component tree. */
+  margin-right: 2px;
+}
+
+/* Styles for children container: indent and separate nested lists */
+.children {
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1px dashed var(--glass-stroke);
+  margin-bottom: 8px;
+}
+
+/*
+ * Hierarchical table styling
+ * The product detail page shows a tree‑like table of components. Each row is
+ * assigned a depth class based off the number of dots in the "number" column
+ * (depth‑0 for top level, depth‑1 for one dot, etc.).  We override the
+ * alternating row backgrounds for deeper levels to provide a subtle nested
+ * appearance.  Deeper rows use the glass backdrop colour which is slightly
+ * translucent, giving the sense that they are children of the row above.
+ */
+/*
+ * Hierarchical table rows (used in the product component tree) inherit
+ * transparent backgrounds so that only the parent card/frame defines the
+ * colour.  Previously depth‑based rows had a fixed glass background
+ * which resulted in sharp, unstyled rectangles.  The hover state still
+ * applies a subtle tint to indicate interactivity.
+ */
+.table tr.depth-1,
+.table tr.depth-2,
+.table tr.depth-3,
+.table tr.depth-4 {
+  background: transparent;
+}
+.table tr.depth-1:hover,
+.table tr.depth-2:hover,
+.table tr.depth-3:hover,
+.table tr.depth-4:hover {
+  background: var(--glass-bg);
+}
+
+/*
+ * Wrapper for responsive tables.  Ensures tables stretch the full width of their
+ * container while allowing horizontal scrolling on small screens.  Without
+ * explicit width and overflow declarations the tables could align awkwardly
+ * within the page when their contents are wide.
+ */
+.table-responsive{
+  width: 100%;
+  overflow-x: auto;
+  /* Wrap tables in a translucent card.  Without a background and border,
+     tables blended into the page and created contrast differences
+     between the warehouse and anagrafiche modules.  Applying the
+     ``glass`` treatment here provides a consistent card backdrop,
+     rounded corners and a subtle border so that data tables align
+     visually with the component lists. */
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+
+/* Toggle control used in hierarchical tables
+ * Rather than using simple blue arrow glyphs, the toggle is displayed as a
+ * small circular button containing either a plus or minus sign.  It is sized
+ * consistently and uses the app's colour palette so it blends into the UI.
+ */
+.toggle{
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--glass-stroke);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text);
+  /* Aumenta la dimensione del simbolo e azzera la line-height per
+     centrare verticalmente il carattere all'interno del cerchio. */
+  font-size: 14px;
+  line-height: 0;
+  margin-right: 6px;
+  transition: background .2s ease, color .2s ease;
+}
+
+/*
+ * -------------------------------------------------------------------------
+ * Enhanced table and component tree styling
+ *
+ * Many admin and inventory pages use either traditional <table> elements or
+ * custom grid layouts (e.g. the component tree in the warehouse).  Users
+ * reported that columns were difficult to distinguish and that spacing was
+ * inconsistent.  The rules below apply a subtle background to headers,
+ * alternate row shading, and light borders between rows and cells.  They
+ * also increase the font weight of headers and add padding to cells to
+ * improve readability across both anagrafiche and magazzino modules.
+ */
+
+/* Standard HTML tables used in the admin section (e.g. types, structures, suppliers). */
+.table th {
+  background: var(--card);
+  border-bottom: 1px solid var(--glass-stroke);
+  font-weight: 600;
+  /* Increase letter spacing slightly for clarity */
+  letter-spacing: 0.2px;
+}
+.table td {
+  border-bottom: 1px solid var(--glass-stroke);
+}
+/* Alternate row colouring for tables: odd rows use the card colour, even rows the translucent background. */
+/*
+ * Remove alternating card/glass backgrounds from admin tables as well.
+ * The base styles for tables above already set a transparent background
+ * for rows and provide a hover tint.  Redundant row colouring here is
+ * removed to avoid overriding the simplified styling.  If a specific
+ * table needs alternating colours it should apply them through a
+ * dedicated class instead of the generic .table selector.
+ */
+.table tr:nth-child(odd),
+.table tr:nth-child(even) {
+  background: transparent;
+}
+/* Maintain the hover highlight using the glass background colour */
+.table tr:hover {
+  background: var(--glass-bg);
+}
+
+/*
+ * Apply a subtle glass background to data rows in standard HTML tables.
+ * This change aligns the appearance of tabular data in the anagrafiche
+ * section with the cards used in the magazzino pages.  Without a
+ * background, table rows appeared flat and disconnected from the
+ * translucent cards used elsewhere in the application.  Using
+ * --glass-bg preserves legibility while allowing underlying gradients
+ * to show through slightly.
+ */
+.table tbody tr {
+  background: var(--glass-bg);
+}
+
+/* Adjust padding within table cells for improved readability */
+.table th,
+.table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Component tree (magazzino) styling.  Applies to the header row and the
+   individual component rows rendered via the inventory macros. */
+.component-header .component-row {
+  font-weight: 600;
+  background: var(--card);
+  border-bottom: 1px solid var(--glass-stroke);
+  /* Add vertical and horizontal padding to separate the header labels
+     from each other and from the row edges.  Previously headers had no
+     padding, causing the text to appear cramped.  These values mirror
+     the padding applied to data rows. */
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.component-tree .component-row {
+  border-bottom: 1px solid var(--glass-stroke);
+  /* Provide consistent vertical padding across all cells */
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+/* Apply alternating backgrounds to rows within the component tree.  The :not(summary)
+   selector ensures that the alternating colours apply to actual rows rather than
+   the <summary> elements themselves. */
+/*
+ * Remove fixed backgrounds on component tree rows.  Previously odd/even rows
+ * used solid backgrounds which created an unappealing rectangular block
+ * inside the outer card.  Instead, leave rows transparent by default and
+ * apply a subtle tint only on hover.  This allows the underlying card
+ * gradient to show through and preserves the rounded corners defined
+ * on .component-node.
+ */
+.component-tree .component-row:nth-child(odd),
+.component-tree .component-row:nth-child(even) {
+  background: transparent;
+}
+.component-tree .component-row:hover {
+  background: var(--glass-bg);
+}
+
+/*
+ * Disegno personalizzato per il pulsante di espansione/collasso nella
+ * tabella dei componenti del prodotto.  Utilizziamo la pseudo‑classe
+ * ::before per mostrare una freccia che cambia orientamento quando
+ * l'elemento ha la classe "expanded".  Senza contenuto diretto nel
+ * markup, l'icona viene centrata dal layout flessibile ereditato dalla
+ * classe .toggle.
+ */
+.toggle::before{
+  content: '▶';
+  font-size: 14px;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  transition: transform .2s ease;
+}
+
+/* Quando la riga è espansa sostituiamo la freccia con una freccia
+   rivolta verso il basso.  La classe "expanded" viene gestita via JS. */
+.toggle.expanded::before{
+  content: '▼';
+}
+
+/* Component image box used in the product detail table.  Provides a
+   consistent size, rounded corners and border for component thumbnails. */
+.component-image{
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--glass-stroke);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card);
+}
+.component-image img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Wrapper for component thumbnail used in tables.  It enables showing a larger
+   preview of the image on hover without requiring any JavaScript. */
+.component-image-wrapper{
+  position: relative;
+  display: inline-block;
+}
+.component-image-wrapper .image-preview{
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 70px;
+  z-index: 50;
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--glass-stroke);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.component-image-wrapper .image-preview img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.component-image-wrapper:hover .image-preview{
+  display: block;
+}
+
+/*
+ * Box description per la pagina di dettaglio prodotto.
+ * Racchiude la descrizione in un contenitore con bordi invisibili
+ * e leggero padding per distinguerlo dal resto del layout.
+ */
+.description-box{
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--card);
+  white-space: pre-wrap;
+  /* Evita che parole troppo lunghe sforino fuori dal contenitore */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/*
+ * Contenitore per la descrizione nella lista dei prodotti.  Di
+ * default la descrizione viene troncata con un'altezza massima e
+ * overflow nascosto.  Quando la classe "collapsed" viene rimossa,
+ * l'altezza si adatta automaticamente al contenuto.
+ */
+.description-container{
+  position: relative;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.description-container.collapsed{
+  max-height: 80px;
+  overflow: hidden;
+}
+
+/* Pulsante per espandere la descrizione nella lista dei prodotti */
+.show-more-btn{
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+/* Colour and styling for expand/collapse toggles in the product detail table.
+ * The hover state inverts the background colour to provide a subtle feedback.
+ */
+.toggle:hover{
+  background: var(--glass-bg);
+  color: var(--text);
+}
+
+
+/* Highlight selected type row in structures admin */
+.type-row{ cursor: pointer; }
+.type-row.active{ background: var(--glass-bg); font-weight: 600; }
+
+/*
+ * Tabbed interface for the product detail page.
+ * Tabs are displayed horizontally with a consistent look and feel matching buttons.
+ */
+.tabs{ margin-top: 12px; }
+.tab-links{ display:flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.tab-links button{
+  cursor:pointer;
+  border:1px solid var(--glass-stroke);
+  border-radius: 12px;
+  padding: 8px 14px;
+  background: var(--card);
+  color: inherit;
+  font-size: 14px;
+  transition: background .2s ease, color .2s ease;
+}
+.tab-links button:hover{
+  background: var(--glass-bg);
+}
+.tab-links button.active{
+  background: linear-gradient(180deg, #4f46e5, #4338ca);
+  color: #fff;
+  border-color: transparent;
+}
+.tab-content .tab-pane{ display:none; }
+.tab-content .tab-pane.active{ display:block; }
+
+/*
+ * Force the correct icons for expand/collapse toggles in the component tree.
+ * We declare these rules at the end of the stylesheet and use a more
+ * specific selector along with `!important` to ensure they win over
+ * earlier definitions.  This prevents nested nodes from inheriting
+ * transformations or content values from ancestor rules and keeps the
+ * arrow orientation consistent for all levels of the hierarchy.
+ */
+/*
+ * Final override for the expand/collapse icons in the component tree.
+ * Only nodes that have children should display an icon. Leaf nodes
+ * (marked with the data‑leaf attribute) hide the icon entirely using
+ * `visibility: hidden` so that the left margin remains consistent
+ * across all rows.  We choose a more modern chevron style for the
+ * collapsed/expanded indicators: ▸ (U+25B8) when collapsed and ▾ (U+25BE)
+ * when expanded.  These overrides sit near the end of the stylesheet
+ * to ensure they take precedence over earlier definitions.
+ */
+.component-tree .component-node > summary::before {
+  /* Collapsed state: show a right‑pointing open chevron. */
+  content: '▸';
+  transform: none;
+}
+
+.component-tree .component-node[open] > summary::before {
+  /* Expanded state: show a down‑pointing chevron. */
+  content: '▾';
+  transform: none;
+}
+
+.component-tree .component-node[data-leaf] > summary::before {
+  /* Hide the icon entirely for leaf nodes but preserve space for alignment. */
+  visibility: hidden;
+}
+
+/*
+ * Stili per i suggerimenti della ricerca nella sezione prodotti.  La
+ * ricerca componenti mostra un elenco a discesa con miniature e
+ * etichette.  Il contenitore appare sotto il campo di input ed è
+ * posizionato in modo assoluto all'interno del form.  Gli elementi
+ * delle righe hanno un layout flessibile con immagine a sinistra
+ * e testo a destra.  Passando il mouse un elemento cambia sfondo
+ * per indicare la selezione.
+ */
+.product-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 1000;
+}
+
+.product-search-results .search-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.product-search-results .search-suggestion img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--glass-stroke);
+}
+
+.product-search-results .search-suggestion:hover {
+  background: var(--glass-bg);
+}
+
+/* Accordion styles used in the product creation form */
+.accordion-list{ display:flex; flex-direction:column; gap: 6px; }
+.accordion-item{ border: 1px solid var(--glass-stroke); border-radius: 12px; background: var(--card); overflow:hidden; }
+.accordion-item > summary{ padding: 10px 14px; cursor:pointer; user-select:none; font-weight:600; display:flex; align-items:center; gap:6px; }
+.accordion-item summary span.muted{ font-weight:400; }
+/* Remove default triangle marker */
+.accordion-item summary::-webkit-details-marker{ display:none; }
+.accordion-content{ padding: 6px 14px 12px; }
+.component-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.component-list li{ display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+.component-list .checkbox{ display:flex; align-items:center; gap:6px; }
+.component-list small{ font-size: 12px; color: var(--muted); }
+.qty-input{ width:72px; border-radius:8px; border:1px solid var(--glass-stroke); background: var(--bg); color: inherit; padding: 6px 8px; }
+
+/* -------------------------------------------------------------------------
+ * User‑requested adjustments for table headers and column spacing
+ *
+ * 1. Shift the "Codice" header slightly to the right to align better with
+ *    its column contents.  Without this padding the header sits flush
+ *    against the left edge, making it appear off balance relative to
+ *    other headers.
+ *
+ * 2. Add extra separation between the "Categoria" and "Stock" columns in
+ *    the warehouse tables (Prodotto, Assiemi, Parti, Commerciali).  A
+ *    small left margin on the stock column prevents the values from
+ *    crowding the category text.
+ */
+.component-header .col-code {
+  /* Shift the "Codice" label substantially to the right.  A padding of
+     approximately 32px (~1cm on typical displays) moves the header
+     away from the left edge and aligns it better with the data
+     underneath. */
+  padding-left: 32px;
+}
+
+/* Apply the same rightward shift to the "Descrizione" header.  This ensures
+   both titles align consistently and appear centred within their
+   respective columns. */
+.component-header .col-desc {
+  padding-left: 32px;
+}
+
+/* Increase the margin between revision, category and stock columns.  Users
+   requested a larger horizontal separation: approximately 1–2 cm of
+   whitespace between the category and stock fields, and at least 1 cm
+   between the category and revision columns.  To achieve this without
+   compromising the responsive grid layout, assign explicit left
+   margins to both the category and quantity (stock) columns.  A
+   margin of 20px on the category column separates it from the
+   revision column (~0.7cm on typical displays), while a larger
+   margin of 32px on the stock column provides ~1cm of space from the
+   category.  These values may be tweaked as needed but must remain
+   consistent across header and data rows. */
+/* Further increase spacing in warehouse tables.  Users reported that the
+   previous margins still left the stock column too close to the
+   category.  Increase the category margin to 24px (≈0.8 cm) and the
+   stock margin to 40px (≈1.3 cm) to ensure a clear visual gap in
+   these views.  These values apply uniformly to data rows and
+   headers. */
+.component-row > .col-category,
+.component-header .col-category {
+  margin-left: 24px;
+}
+
+.component-row > .col-qty,
+.component-header .col-qty {
+  margin-left: 40px;
+}
+
+/* Additional padding for table headers "Codice" and "Descrizione" in
+   traditional <table> layouts.  Many of the admin and product
+   sections still use <table> elements rather than the component-row
+   grid.  Since these tables do not use named column classes on
+   headers, target the third and fourth columns explicitly.  Apply
+   substantial left padding (~32px) so the "Codice" and "Descrizione"
+   headers align visually with the data cells and other headers. */
+.table thead th:nth-child(3),
+.table thead th:nth-child(4) {
+  padding-left: 32px;
+}
+
+/*
+ * Checklist toggle styling
+ *
+ * The product and inventory pages allow users to flag uploaded
+ * documents as part of a build/load checklist.  Previously this was
+ * implemented with a plain checkbox, which looked out of place next
+ * to the polished UI controls elsewhere in the application.  To
+ * improve usability we style these checkboxes as modern toggle
+ * switches.  The native checkbox input is hidden via the `appearance`
+ * property and replaced with a custom track and thumb drawn using
+ * pseudo-elements.  When the input is checked the track turns
+ * green and the thumb slides to the right.  The colours are chosen
+ * to harmonise with the existing success palette defined for buttons
+ * (see `.btn.success`).
+ */
+input.checklist-toggle {
+  /* Hide the default checkbox box and draw our own switch */
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background-color: var(--muted);
+  border-radius: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* Thumb */
+input.checklist-toggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  transition: transform 0.3s ease;
+}
+
+/* Checked state: turn the track green and slide the thumb */
+input.checklist-toggle:checked {
+  background-color: #059669; /* matches the success button gradient base */
+}
+
+input.checklist-toggle:checked::before {
+  transform: translateX(16px);
+}

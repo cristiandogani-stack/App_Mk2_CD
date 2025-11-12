@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Nuovo utente - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Crea nuovo utente</h2>
+  <p class="section-subtitle">Inserisci le informazioni per l'utente.</p>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Email</span>
+      <input type="email" name="email" required placeholder="nome@example.com">
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" required>
+    </label>
+    <label class="field">
+      <span>Ruolo</span>
+      <select name="role">
+        <option value="user">Utente</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <div style="display:flex; gap: 10px; margin-top: 12px;">
+      <button class="btn primary" type="submit">Crea</button>
+      <a class="btn ghost" href="{{ url_for('admin.users') }}">Annulla</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}Conferma eliminazione nodo – Argal{% endblock %}
+
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Elimina nodo</h2>
+  <p>
+    Sei sicuro di voler eliminare il nodo <strong>{{ node.name }}</strong>? Questa operazione
+    rimuoverà anche tutti i nodi figli e non potrà essere annullata.
+  </p>
+  <form method="post" class="form-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn danger" type="submit">Conferma eliminazione</button>
+    <a class="btn ghost" href="{{ url_for('admin.structures') }}">Annulla</a>
+  </form>
+</section>
+{% endblock %}

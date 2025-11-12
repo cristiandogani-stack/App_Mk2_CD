@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{#
+  Inventory dashboard page.
+
+  This template displays two summary cards indicating how many assemblies
+  currently exist in stock and how many are missing (quantity zero).  A
+  collapsible tree below lists each assembly together with its direct
+  components.  For each row the current on‑hand quantity is shown and
+  appropriate actions are provided: assemblies can be built via a guided
+  procedure; parts and commercial components can be topped up from the
+  production page.  At the end of the page a list of improvement ideas
+  provides guidance for future enhancements.
+#}
+
+{% block title %}Magazzino – Argal{% endblock %}
+
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Magazzino</h2>
+
+  {# Secondary navigation within the warehouse module
+     This tab bar allows switching between assemblies, parts, commercial
+     components and the full archive.  The active tab is highlighted
+     using the "primary" button style while inactive tabs use the
+     "ghost" variant.  When new pages are added this nav can be
+     copied into the corresponding templates.
+  #}
+  {# Full tab navigation for the warehouse dashboard.  Assemblies, parts, commercial components,
+     products and the history can be reached from here.  The ``active_tab`` variable
+     controls highlighting of the current section. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    {# On the warehouse overview only display the "Prodotti" and "Storico Magazzino" tabs.
+       The category tabs (assiemi, parti, commerciali) require a selected product and are
+       therefore hidden here.  The ``active_tab`` variable still determines
+       highlighting between products and archive. #}
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    {# Link to the production history.  This button used to be labelled
+       "Archivio assiemi" but now points to the "Storico produzione" page.
+       It is highlighted when ``active_tab`` equals ``'archive'``. #}
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+
+  {# Summary cards for completed and incomplete assemblies #}
+  <div class="grid grid-2" style="margin-bottom:20px;">
+    <div class="card glass">
+      <h3 class="card-title">Assiemi completati</h3>
+      <p style="font-size:32px; font-weight:600; margin:8px 0;">
+        {{ completed }}
+      </p>
+    </div>
+    <div class="card glass">
+      <h3 class="card-title">Assiemi da completare</h3>
+      <p style="font-size:32px; font-weight:600; margin:8px 0;">
+        {{ incomplete }}
+      </p>
+    </div>
+  </div>
+
+  {# Tree view of assemblies and components #}
+  {% if assemblies|length == 0 %}
+    <p class="muted">Nessun assieme definito.</p>
+  {% else %}
+    <h3 class="card-title">Assiemi e componenti</h3>
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        {# Added revision column to the warehouse dashboard.  This column displays
+           the current revision label (e.g. Rev.A) when defined and remains
+           empty when no revision is set.  Without this column the grid
+           alignment defined in styles.css (eight columns) would be off by one. #}
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Tipo</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {# Recursive macro to render a structure node and its children #}
+      {% macro render_node(node, index) %}
+        {% set has_children = node.children|length > 0 %}
+        <details id="part-{{ node.id }}" class="component-node" {% if not has_children %}data-leaf="true"{% endif %}>
+          <summary>
+            <div class="component-row">
+              <div class="col-number">{{ index if index is not none else '' }}</div>
+              <div class="col-image">
+                <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ node.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+              </div>
+              <div class="col-code">{{ node.name }}</div>
+              <div class="col-desc">
+                {#
+                  Always display the structure description, falling back to a dash when
+                  undefined.  The type (assembly/part/commercial) remains visible in
+                  the "Tipo" column.  This ensures assemblies show their real
+                  description rather than the word "Assieme".
+                #}
+                {{ node.description or '—' }}
+              </div>
+              {# Revision column: show the human readable label (e.g. Rev.A) when
+                 a revision index exists; leave blank when none.  The
+                 Structure.revision_label property handles mapping the numeric
+                 revision to a letter and returns an empty string otherwise. #}
+              <div class="col-revision">{{ node.revision_label }}</div>
+              <div class="col-category">
+                {% if node.flag_assembly %}Assieme{% elif node.flag_commercial %}Commerciale{% else %}Parte{% endif %}
+              </div>
+              <div class="col-qty">{{ (node.quantity_in_stock or 0)|int }}</div>
+              <div class="col-actions">
+                {#
+                  Build actions for the assembly tree.  When a structure is an assembly
+                  we show how many complete units can be built and provide a
+                  "Costruisci" button.  For parts and commercial items we link
+                  to the load component page.  The revision does not affect
+                  the actions column.
+                #}
+                {% if node.flag_assembly %}
+                  {% if node.complete_qty and node.complete_qty > 0 %}
+                    <span style="color:#10b981; font-weight:600; margin-right:6px;">
+                      🟢 {{ node.complete_qty }}
+                    </span>
+                    <a href="{{ url_for('inventory.build_assembly', assembly_id=node.id) }}" class="btn primary small">Costruisci</a>
+                  {% else %}
+                    <span class="muted" style="margin-right:6px;">&nbsp;</span>
+                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5;">Costruisci</a>
+                  {% endif %}
+                {% else %}
+                  {# For leaf nodes (parts or commercial) provide a link to load stock #}
+                  <a href="{{ url_for('inventory.load_component', part_id=node.id) }}" class="btn ghost small">Carica</a>
+                {% endif %}
+              </div>
+            </div>
+          </summary>
+          {% if has_children %}
+            <div class="children">
+              {% for child in node.children|sort(attribute='id') %}
+                {{ render_node(child, loop.index) }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </details>
+      {% endmacro %}
+
+      {% for assembly in assemblies %}
+        {{ render_node(assembly, loop.index) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# Ideas and future improvements #}
+  <div class="card glass" style="margin-top:24px; padding:16px;">
+    <h4 class="card-title">Idee e miglioramenti</h4>
+    <ul style="padding-left:20px; margin:8px 0; list-style:disc;">
+      <li>Visualizzare indicatori di stato (verde/giallo/rosso) in base alle quantità e alle soglie di riordino.</li>
+      <li>Introdurre una barra di ricerca per individuare rapidamente componenti o assiemi.</li>
+      <li>Permettere il filtraggio per categoria (assiemi, parti, commerciali) o per disponibilità.</li>
+      <li>Esportare l'inventario in formato CSV o PDF per reportistica e analisi.</li>
+      <li>Mostrare grafici e KPI del magazzino nella dashboard, ad esempio componenti sotto scorta.</li>
+      <li>Inviare notifiche quando le quantità scendono sotto le soglie di sicurezza.</li>
+    </ul>
+  </div>
+
+</section>
+{% endblock %}

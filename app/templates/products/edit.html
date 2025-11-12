@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Modifica prodotto - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Modifica prodotto</h2>
+  <form method="post" class="form" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field"><span>Nome prodotto</span><input name="name" required value="{{ product.name }}"></label>
+    {# Additional product specifications #}
+    {# Corrected labels for inlet specifications.  The previous version incorrectly
+       split “inlet” into two words (“in let” and “in lett”).  Update the labels
+       to use the proper English term. #}
+    <label class="field"><span>Fluid inlet (BSPP)</span>
+      <input type="text" name="fluid_in_let" value="{{ product.fluid_in_let or '' }}" placeholder="es: 1 1/5\" BSPP">
+    </label>
+    <label class="field"><span>Layer inlet (BSPP)</span>
+      <input type="text" name="layer_in_lett" value="{{ product.layer_in_lett or '' }}" placeholder="es: 3/8\" BSPP">
+    </label>
+    <label class="field"><span>Noise (dB(A))</span>
+      <input type="number" step="any" name="noise" value="{{ product.noise if product.noise is not none else '' }}">
+    </label>
+    <label class="field"><span>Flow rate (L/m)</span>
+      <input type="number" step="any" name="flow_rate" value="{{ product.flow_rate if product.flow_rate is not none else '' }}">
+    </label>
+    <div class="field">
+      <span>Massima pressione (bar)</span>
+      <div style="display:flex; gap:8px;">
+        <label style="flex:1; display:flex; flex-direction:column;">
+          <span style="font-size:0.85em; margin-bottom:4px;">Da</span>
+          <input type="number" step="any" name="max_pressure_from" value="{{ product.max_pressure_from if product.max_pressure_from is not none else '' }}">
+        </label>
+        <label style="flex:1; display:flex; flex-direction:column;">
+          <span style="font-size:0.85em; margin-bottom:4px;">A</span>
+          <input type="number" step="any" name="max_pressure_to" value="{{ product.max_pressure_to if product.max_pressure_to is not none else '' }}">
+        </label>
+      </div>
+    </div>
+    <div class="field">
+      <span>Dimensioni (mm)</span>
+      <div style="display:flex; gap:8px;">
+        <label style="flex:1; display:flex; flex-direction:column;">
+          <span style="font-size:0.85em; margin-bottom:4px;">X</span>
+          <input type="number" step="any" name="dimension_x" value="{{ product.dimension_x if product.dimension_x is not none else '' }}">
+        </label>
+        <label style="flex:1; display:flex; flex-direction:column;">
+          <span style="font-size:0.85em; margin-bottom:4px;">Y</span>
+          <input type="number" step="any" name="dimension_y" value="{{ product.dimension_y if product.dimension_y is not none else '' }}">
+        </label>
+        <label style="flex:1; display:flex; flex-direction:column;">
+          <span style="font-size:0.85em; margin-bottom:4px;">Z</span>
+          <input type="number" step="any" name="dimension_z" value="{{ product.dimension_z if product.dimension_z is not none else '' }}">
+        </label>
+      </div>
+    </div>
+    <div class="field">
+      <span>Immagine prodotto</span>
+      {% if product.image_filename %}
+        <div style="margin-bottom:8px;">
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.image_filename) }}" alt="Immagine prodotto" style="max-width:150px; height:auto;">
+        </div>
+      {% endif %}
+      <input type="file" name="image" accept="image/*">
+      <p class="muted" style="font-size:0.9em;">Carica un nuovo file per sostituire l'immagine esistente.</p>
+    </div>
+
+    {# Curve characteristics image upload #}
+    <div class="field">
+      <span>Curve caratteristiche</span>
+      {% if product.curve_image_filename %}
+        <div style="margin-bottom:8px;">
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.curve_image_filename) }}" alt="Curve caratteristiche" style="max-width:150px; height:auto;">
+        </div>
+      {% endif %}
+      <input type="file" name="curve_image" accept="image/*">
+      <p class="muted" style="font-size:0.9em;">Carica un nuovo file per sostituire l'immagine della curva.</p>
+    </div>
+    <button class="btn primary" type="submit">Salva</button>
+  </form>
+</section>
+{% endblock %}

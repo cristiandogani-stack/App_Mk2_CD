@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Admin - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Pannello di Amministrazione</h2>
+  <div class="grid grid-2">
+    <a href="{{ url_for('admin.modules') }}" class="card glass link-card">
+      <h3 class="card-title">Moduli</h3>
+      <p class="muted">Abilita/Disabilita le aree dell'applicazione.</p>
+    </a>
+    <a href="{{ url_for('admin.structures') }}" class="card glass link-card">
+      <h3 class="card-title">Strutture</h3>
+      <p class="muted">Definisci tipologie e nodi per assiemi, parti e parti a commercio.</p>
+    </a>
+    <a href="{{ url_for('admin.dictionary') }}" class="card glass link-card">
+      <h3 class="card-title">Dizionario</h3>
+      <p class="muted">Gestisci fornitori, centri di lavoro, fasi e costi materiali.</p>
+    </a>
+    <a href="{{ url_for('admin.users') }}" class="card glass link-card">
+      <h3 class="card-title">Utenti</h3>
+      <p class="muted">Gestisci gli account utente e i ruoli.</p>
+    </a>
+  </div>
+</section>
+{% endblock %}

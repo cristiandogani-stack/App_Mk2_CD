@@ -1,0 +1,149 @@
+<!doctype html>
+<!-- Force the application to use the dark theme by default.  The data-theme
+     attribute is set to "dark" so the CSS variables defined for the dark
+     palette take effect regardless of user or system preferences. -->
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Argal{% endblock %}</title>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+</head>
+<body>
+  <div class="bg-aurora"></div>
+
+  {# Hide the header when rendering in embedded mode (e.g. inside an iframe).
+     The "embedded" variable can be passed from the view to suppress the
+     navigation and header.  #}
+  {% if current_user.is_authenticated and not embedded %}
+  <header class="app-header glass">
+    <div class="brand">
+      {# Updated logo to use the new PNG provided by the user and wrap it in a link
+         to the dashboard.  Making the logo clickable allows users to
+         quickly return to the main dashboard from anywhere in the app. #}
+      <a href="{{ url_for('dashboard.index') }}" class="brand-link" style="display:inline-block;">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo">
+      </a>
+      {# Removed brand name to display only the logo #}
+    </div>
+    <nav class="nav-desktop">
+      {#
+        Highlight the active top‑level module by comparing the blueprint
+        portion of the current request endpoint with that of each module.
+        Routes within a blueprint share the same prefix (e.g. ``inventory.*``),
+        so checking just the prefix ensures the module remains active when
+        navigating deeper into its subpages.  Without this logic the
+        navigation bar would deselect "Magazzino" when visiting
+        "/inventory/products", "/inventory/assemblies", etc.
+      #}
+      {% for m in enabled_modules %}
+        {% set mod_bp = (m.endpoint.split('.')|first) %}
+        {% set cur_ep = request.endpoint or '' %}
+        {% set cur_bp = (cur_ep.split('.')|first) %}
+        {% set is_active = (mod_bp == cur_bp) %}
+        {# Rename the top‑level "Prodotti" module to "Anagrafiche" when rendering the navigation.  This
+           ensures the link label reflects the new terminology without
+           modifying the underlying blueprint slug or database record. #}
+        {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
+        <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
+      {% endfor %}
+    </nav>
+    {# The global search bar has been removed from the header.  Search
+       functionality is now available within the product pages themselves. #}
+    <div class="header-actions">
+      {# The theme toggle has been removed.  The application always
+         operates in dark mode, so only the logout button remains here. #}
+      <a class="btn btn-ghost" href="{{ url_for('auth.logout') }}">Esci</a>
+    </div>
+    <button class="hamburger" id="hamburger" aria-label="Apri menu">☰</button>
+  </header>
+
+  {# Mobile navigation: hidden in embedded mode #}
+  <nav class="nav-mobile glass" id="mobileMenu" {% if embedded %}style="display:none;"{% endif %}>
+    {#
+      Mobile navigation highlights the active module using the same
+      blueprint matching logic as the desktop navigation.  This keeps
+      the "Magazzino" tab highlighted when browsing its internal pages.
+    #}
+    {% for m in enabled_modules %}
+      {% set mod_bp = (m.endpoint.split('.')|first) %}
+      {% set cur_ep = request.endpoint or '' %}
+      {% set cur_bp = (cur_ep.split('.')|first) %}
+      {% set is_active = (mod_bp == cur_bp) %}
+      {# As on desktop, rename the "Prodotti" module to "Anagrafiche" for the mobile navigation. #}
+      {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
+      <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
+    {% endfor %}
+    <a class="nav-link" href="{{ url_for('auth.logout') }}">Esci</a>
+  </nav>
+  {% endif %}
+
+  <main class="container">
+    {# Display flash messages from Flask.  Without this the user never sees success/error alerts #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {#
+    Preserve scroll position after stock updates.  When a user submits a
+    form with the class "stock-update" (used for loading stock in the
+    warehouse), the current scroll position and pathname are stored in
+    sessionStorage.  After the page reloads, if the stored pathname
+    matches the current pathname, the page scrolls back to the saved
+    position.  This prevents the view from jumping to the top during
+    stock updates.
+  #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      const savedPos = sessionStorage.getItem('stockScrollPos');
+      const savedUrl = sessionStorage.getItem('stockScrollUrl');
+      if (savedPos !== null && savedUrl === window.location.pathname) {
+        // Use setTimeout to ensure scrolling after any automatic anchor jumps
+        setTimeout(function() {
+          window.scrollTo(0, parseInt(savedPos));
+        }, 0);
+        sessionStorage.removeItem('stockScrollPos');
+        sessionStorage.removeItem('stockScrollUrl');
+      }
+    } catch (err) {
+      // Ignore storage errors
+    }
+    // Attach scroll saving to forms marked as stock-update
+    document.querySelectorAll('form.stock-update').forEach(function(form) {
+      form.addEventListener('submit', function() {
+        try {
+          sessionStorage.setItem('stockScrollPos', window.pageYOffset.toString());
+          sessionStorage.setItem('stockScrollUrl', window.location.pathname);
+        } catch (err) {
+          // Ignore storage errors
+        }
+      });
+    });
+  });
+  </script>
+
+  {# Hide footer when rendering in embedded mode so that modals do not display the
+     application footer (for example inside production popups).  The embedded
+     variable is passed via the view on pages that load within an iframe.  When
+     embedded is true the footer is suppressed entirely. #}
+  {% if not embedded %}
+  <footer class="app-footer">
+    <small>© {{ 2025 }} Argal Semiconductor</small>
+  </footer>
+  {% endif %}
+</body>
+</html>

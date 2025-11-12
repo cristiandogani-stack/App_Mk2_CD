@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{#
+  Loaded items view for a single product.
+
+  This page lists all stock items that have been marked as "CARICATO"
+  for the selected product.  Operators can use this page to audit
+  which physical pieces have been loaded into the warehouse from
+  production boxes.  A simple table shows the DataMatrix code, the
+  associated production box and the current status of each item.
+#}
+
+{% block title %}Magazzino – {{ product.name }}: Caricati{% endblock %}
+
+{% block content %}
+<section class="section">
+  <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: {{ product.name }} – Componenti caricati</h2>
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}"
+       class="btn small ghost">Prodotto</a>
+    <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}" class="btn small ghost">Assiemi</a>
+    <a href="{{ url_for('inventory.product_parts', product_id=product.id) }}" class="btn small ghost">Parti</a>
+    <a href="{{ url_for('inventory.product_commercial', product_id=product.id) }}" class="btn small ghost">Commerciali</a>
+    {# Archive links: component and assembly archives. #}
+    <a href="{{ url_for('inventory.product_archive_view', product_id=product.id) }}" class="btn small ghost">Archivio&nbsp;componenti</a>
+    <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product.id) }}" class="btn small ghost">Archivio&nbsp;assiemi</a>
+    <a href="#" class="btn small primary">Caricati</a>
+  </div>
+  {% if items|length == 0 %}
+    <p class="muted">Nessun componente caricato per questo prodotto.</p>
+  {% else %}
+    <table class="glass" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px;">#</th>
+          <th style="text-align:left; padding:8px;">DataMatrix</th>
+          <th style="text-align:left; padding:8px;">Box di produzione</th>
+          <th style="text-align:left; padding:8px;">Stato</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr style="border-bottom:1px solid var(--glass-stroke);">
+          <td style="padding:8px;">{{ loop.index }}</td>
+          <td style="padding:8px; font-family:monospace;">{{ item.datamatrix_code }}</td>
+          <td style="padding:8px;">
+            {% if item.production_box %}
+              <a href="{{ url_for('inventory.production_box_view', box_id=item.production_box.id) }}">{{ item.production_box.code }}</a>
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+          <td style="padding:8px;">{{ item.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

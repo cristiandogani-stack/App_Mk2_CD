@@ -1,0 +1,75 @@
+{#
+  Success page for loading a component inside a production box modal.
+
+  When a part or commercial component is loaded from within a modal
+  (embedded flag true), the backend returns this minimal page instead of
+  redirecting back to the production box.  The page contains a small
+  JavaScript snippet that instructs the parent window to close the modal
+  and reload the list view so that the recently loaded item disappears
+  immediately.  This avoids the need for manual page refreshes and
+  ensures the operator always sees an up‑to‑date list of remaining items.
+
+  Outside of embedded mode this template should not be used; the
+  ``load_component`` view continues to redirect to the appropriate
+  back_url when loading stock outside of a production box.
+#}
+
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <title>Caricamento completato</title>
+  </head>
+  <body>
+    <script>
+      // Immediately execute a function to close the modal and refresh the parent
+      (function() {
+        try {
+          // Obtain references to the parent document.  When this page is
+          // loaded inside an iframe the parent document contains the
+          // production_box.html markup with loadModal and loadFrame elements.
+          var parentDoc = window.parent && window.parent.document;
+          if (parentDoc) {
+            // Reset the iframe so that its load handler is removed and
+            // subsequent loads do not trigger unexpected callbacks.
+            var iframe = parentDoc.getElementById('loadFrame');
+            if (iframe) {
+              iframe.onload = null;
+              iframe.src = '';
+            }
+            // Hide the modal overlay to return focus to the parent page.
+            var modal = parentDoc.getElementById('loadModal');
+            if (modal) {
+              modal.style.display = 'none';
+            }
+          }
+        } catch (err) {
+          // Ignore any errors encountered while interacting with the parent
+        }
+        // Trigger a reload of the parent page so that the list of stock
+        // items reflects the newly loaded item.  Use location.reload()
+        // instead of assigning location.href to preserve scroll position.
+        try {
+          if (window.parent && window.parent.location) {
+            window.parent.location.reload();
+          }
+        } catch (err) {
+          // Fallback: attempt to navigate to the back_url provided via
+          // template context when reloading the parent is not possible.  This
+          // occurs only in rare scenarios where the iframe is not inside
+          // another window (e.g. if opened directly).  The server will
+          // interpolate ``back_url`` at render time.
+          {% if back_url %}
+          window.location.href = {{ back_url|tojson }};
+          {% else %}
+          // If no back_url is provided, simply reload the current page
+          window.location.reload();
+          {% endif %}
+        }
+      })();
+    </script>
+    <noscript>
+      <p>Caricamento completato. È possibile chiudere questa finestra.</p>
+    </noscript>
+  </body>
+</html>

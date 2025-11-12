@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+
+{#
+  Storico produzione view for the warehouse.
+
+  This template lists every finished product build in the system and
+  explodes its structure to show the components and nested subassemblies
+  consumed during the build.  Each build is rendered as a collapsible
+  row; expanding the row reveals the full bill of materials used at
+  that moment.  Columns mirror the per‑product assemblies archive: a
+  timestamp, a synthetic DataMatrix image, the product name, an
+  optional description, the user who performed the build and a placeholder
+  for documents.  The navigation bar mirrors the warehouse home page
+  allowing operators to switch between the products view and the
+  production history.  When no builds exist a muted message is shown.
+#}
+
+{% block title %}Magazzino – Storico produzione{% endblock %}
+
+{% block content %}
+<section class="section">
+  <style>
+  /* Ensure cells in the production history table wrap long text. */
+  .component-header .component-row > div,
+  .component-tree .component-row > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  /* Allow the documents placeholder cell to wrap */
+  .component-header .component-row > div:last-child,
+  .component-tree .component-row > div:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* Truncate long descriptions and display full text on hover */
+  .desc-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Slightly indent the DataMatrix column header to align with the code image */
+  .component-header .component-row > div:nth-child(2) {
+    padding-left: 1.5rem;
+  }
+  </style>
+  <h2 class="section-title">Magazzino: Storico produzione</h2>
+  {# Tab navigation: allow toggling between products and the history.  The
+     ``active_tab`` variable passed from the view controls which button
+     appears highlighted. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+  {# Display a search bar to filter productions and their components.  This
+     input allows users to quickly locate specific codes, names or
+     descriptions.  When the search field is empty all rows are shown. #}
+  <div style="margin-bottom:12px; display:flex; justify-content:center;">
+    <input type="text" id="history-search" class="input" placeholder="Cerca..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+  </div>
+  {% if assemblies|length == 0 %}
+    <p class="muted">Nessun evento di produzione registrato.</p>
+  {% else %}
+    {# Header row for the production history.  Define six columns with adjusted
+       widths: 12% 15% 20% 25% 18% 10%.  A dedicated documents column
+       remains present for future enhancements. #}
+    <div class="component-header">
+      <div class="component-row" style="grid-template-columns: 12% 15% 20% 25% 18% 10%;">
+        <div>Data/Ora</div>
+        <div>DataMatrix</div>
+        <div>Prodotto</div>
+        <div>Descrizione</div>
+        <div>Utente</div>
+        <div>Docs</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {# Recursive macro to render a build or component node.  Assemblies with
+         children are presented as collapsible ``<details>`` elements.
+         Leaf components are rendered as simple rows.  Each node accepts
+         the same keys returned by the server: timestamp, datamatrix,
+         name, description, user, docs and an optional ``components`` list. #}
+      {% macro render_node(node) %}
+        {% if node.components is defined and node.components|length > 0 %}
+          <details class="component-node">
+            <summary>
+              <div class="component-row glass" style="grid-template-columns: 12% 15% 20% 25% 18% 10%; border:1px solid var(--glass-stroke); border-radius:var(--radius); margin-bottom:4px; padding:8px 12px;">
+                <div>
+                  {% if node.timestamp %}
+                    <span>{{ node.timestamp.strftime('%Y-%m-%d') }}</span><br>
+                    <span>{{ node.timestamp.strftime('%H:%M:%S') }}</span>
+                  {% endif %}
+                </div>
+                <div style="text-align:center;">
+                  {# Render the synthetic DataMatrix as an SVG when the
+                     client-side library is available; otherwise display the
+                     raw payload. #}
+                  <div class="dm-container" data-code="{{ node.datamatrix }}"
+                       style="display:inline-block; background:#fff; padding:2px; border:1px solid var(--glass-stroke); border-radius:4px; width:60px; height:60px; line-height:60px; text-align:center; font-family:monospace; font-size:10px; overflow:hidden; white-space:nowrap;"></div>
+                </div>
+                <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
+                <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
+                <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
+                <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
+                  {# Placeholder for future document links.  Documents are
+                     currently not linked on the production history view.  Use flex
+                     layout to align the button to the top and stop event
+                     propagation when clicked. #}
+                  {% if node.docs and node.docs|length > 0 %}
+                    <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Documenti disponibili" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+                  {% else %}
+                    <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+                  {% endif %}
+                </div>
+              </div>
+          </summary>
+            <div class="children" style="padding-left:20px; margin-bottom:8px;">
+              {% for c in node.components %}
+                {{ render_node(c) }}
+              {% endfor %}
+            </div>
+          </details>
+        {% else %}
+          <div class="component-row glass" style="grid-template-columns: 12% 15% 20% 25% 18% 10%; border:1px solid var(--glass-stroke); border-radius:var(--radius); margin-bottom:4px; padding:8px 12px;">
+            <div>
+              {% if node.timestamp %}
+                <span>{{ node.timestamp.strftime('%Y-%m-%d') }}</span><br>
+                <span>{{ node.timestamp.strftime('%H:%M:%S') }}</span>
+              {% endif %}
+            </div>
+            <div style="text-align:center;">
+              <div class="dm-container" data-code="{{ node.datamatrix }}"
+                   style="display:inline-block; background:#fff; padding:2px; border:1px solid var(--glass-stroke); border-radius:4px; width:60px; height:60px; line-height:60px; text-align:center; font-family:monospace; font-size:10px; overflow:hidden; white-space:nowrap;"></div>
+            </div>
+            <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
+            <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
+            <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
+            <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
+              {% if node.docs and node.docs|length > 0 %}
+                <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Documenti disponibili" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+              {% else %}
+                <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endmacro %}
+      {% for asm in assemblies %}
+        {{ render_node(asm) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{# Client-side scripts: render DataMatrix codes and implement a simple
+   search function to filter the history.  The search input filters
+   against the concatenated text content of each assembly/component row. #}
+<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  // Render DataMatrix images
+  try {
+    const containers = document.querySelectorAll('.dm-container');
+    containers.forEach(function(el){
+      const code = el.getAttribute('data-code');
+      if (!code) return;
+      try {
+        const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000','#fff'] });
+        el.innerHTML = '';
+        el.appendChild(svg);
+      } catch (err) {
+        el.textContent = code;
+      }
+    });
+  } catch (err) {
+    // When the library is unavailable, leave containers untouched
+  }
+  // Filter rows based on the search query
+  const searchInput = document.getElementById('history-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', function(){
+      const query = this.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('.component-tree details, .component-tree .component-row');
+      rows.forEach(function(row){
+        // collapse nested details when filtering
+        if (row.tagName.toLowerCase() === 'details') {
+          row.open = false;
+        }
+        const text = row.textContent.toLowerCase();
+        const match = (query === '' || text.includes(query));
+        row.style.display = match ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+{% endblock %}

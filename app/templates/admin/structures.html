@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}Strutture - Admin{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Strutture</h2>
+  <div class="grid grid-2">
+    <div class="card glass">
+      <h3 class="card-title">Crea tipologia</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="form_type" value="type">
+        <label class="field"><span>Nome</span>
+          <input name="name" required placeholder="es. Famiglia" value="{{ pending_type_form.name if pending_type_form else '' }}">
+        </label>
+        <label class="field"><span>Descrizione</span>
+          <textarea name="description" rows="3" placeholder="Opzionale">{{ pending_type_form.description if pending_type_form else '' }}</textarea>
+        </label>
+        {# Removed typology selection for structure types.  A type no longer requires choosing a typology;
+           only the name and description are captured.  The corresponding flags will default to false in
+           the backend. #}
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          {# Removed the "Definisci" button for structure types.  Structure types no longer require
+             a separate definition step; only the "Crea" button remains. #}
+          <button type="submit" class="btn primary" name="action" value="create">Crea</button>
+        </div>
+      </form>
+    </div>
+    <div class="card glass">
+      <h3 class="card-title">Crea nodo</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="form_type" value="node">
+        <label class="field">
+          <span>Tipo</span>
+          <select name="type_id" required>
+            <option value="" disabled {% if not pending_node_form or not pending_node_form.type_id %}selected{% endif %}>Seleziona un tipo…</option>
+            {% for t in types %}
+              <option value="{{ t.id }}" {% if pending_node_form and pending_node_form.type_id and pending_node_form.type_id|int == t.id %}selected{% endif %}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Padre (opzionale)</span>
+          <select name="parent_id">
+            <option value="" {% if not pending_node_form or not pending_node_form.parent_id %}selected{% endif %}>— Nessuno —</option>
+            {% for t in types %}
+              <optgroup label="{{ t.name }}">
+                {% for n in nodes_by_type[t.id] %}
+                  <option value="{{ n.id }}" {% if pending_node_form and pending_node_form.parent_id and pending_node_form.parent_id|int == n.id %}selected{% endif %}>{{ n.name }}</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>Nome nodo</span>
+          <input name="node_name" required placeholder="es. Linea A" value="{{ pending_node_form.node_name if pending_node_form else '' }}">
+        </label>
+        <label class="field">
+          <span>Tipologia</span>
+          <div class="check-group">
+            <label style="margin-right:8px;"><input type="radio" name="node_typology" value="assembly" required {% if pending_node_form and pending_node_form.node_typology == 'assembly' %}checked{% endif %}> Assieme</label>
+            <label style="margin-right:8px;"><input type="radio" name="node_typology" value="part" {% if pending_node_form and pending_node_form.node_typology == 'part' %}checked{% endif %}> Parte</label>
+            <label><input type="radio" name="node_typology" value="commercial" {% if pending_node_form and pending_node_form.node_typology == 'commercial' %}checked{% endif %}> Parte a commercio</label>
+          </div>
+        </label>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <button type="submit" class="btn secondary" name="action" value="define" id="node-define-button" disabled>Definisci</button>
+          <button type="submit" class="btn primary" name="action" value="create">Aggiungi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="card glass" style="margin-top:20px;">
+    <h3 class="card-title">Importa Distinta</h3>
+    <p class="muted">Carica un file CSV per importare una distinta base. Questa funzione verrà implementata successivamente.</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="{{ url_for('admin.import_structure') }}" class="btn primary">Importa distinta</a>
+      <a href="{{ url_for('admin.import_images') }}" class="btn secondary">Importa immagini</a>
+    </div>
+  </div>
+  <div class="card glass">
+    <h3 class="card-title">Tipi e Nodi</h3>
+    <div class="tree">
+      {% if types|length == 0 %}
+        <p class="muted">Nessun tipo definito.</p>
+      {% endif %}
+      {% for t in types %}
+        {# Each structure type is rendered as a collapsible tree item.  We remove
+           the ``open`` attribute so that types are collapsed by default when
+           the page is first loaded.  The type name is wrapped in a link to its
+           edit page so administrators can click it to modify the type. #}
+        <details class="tree-node">
+          <summary>
+            <strong><a href="{{ url_for('admin.edit_structure_type', type_id=t.id) }}">{{ t.name }}</a></strong>
+            — <span class="muted">{{ t.description or '—' }}</span>
+            {# Pulsante elimina tipo: porta alla pagina di conferma eliminazione #}
+            <a class="btn danger small" href="{{ url_for('admin.delete_structure_type', type_id=t.id) }}" style="margin-left:8px;">Elimina</a>
+          </summary>
+          {# List of nodes for this type.  Only display root nodes (without a
+             parent) at the top level.  Nodes with children are rendered
+             inside <details>/<summary> so they can be collapsed.  Leaf nodes
+             are simple links.  Children will be displayed recursively by the
+             tree_children partial. #}
+          <ul>
+            {% set nodes = nodes_by_type[t.id] %}
+            {% for n in nodes %}
+              {# Skip draft nodes: those marked with table_assieme/table_parte/table_commerciale #}
+              {% if not n.parent_id and not (n.table_assieme or n.table_parte or n.table_commerciale) %}
+                <li>
+                  {% if n.children and n.children|length > 0 %}
+                    <details class="tree-node">
+                      <summary><a href="{{ url_for('admin.edit_structure_node', node_id=n.id) }}">{{ n.name }}</a></summary>
+                      {# Render the subtree for this node.  Preserve the original
+                         ``n`` variable by saving and restoring it around the include. #}
+                      {% set _old_n = n %}
+                      {% include 'partials/tree_children.html' %}
+                      {% set n = _old_n %}
+                    </details>
+                  {% else %}
+                    <a href="{{ url_for('admin.edit_structure_node', node_id=n.id) }}">{{ n.name }}</a>
+                  {% endif %}
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        </details>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // No 'Definisci' button for structure types; type creation requires only the name.  No
+    // dynamic enablement is needed here.
+    // Node define button
+    var nodeTypeSelect = document.querySelector('select[name="type_id"]');
+    var nodeNameInput = document.querySelector('input[name="node_name"]');
+    var nodeRadios = document.querySelectorAll('input[name="node_typology"]');
+    var nodeDefineButton = document.getElementById('node-define-button');
+    function updateNodeDefine() {
+      var typeOk = nodeTypeSelect && nodeTypeSelect.value;
+      var nameOk = nodeNameInput && nodeNameInput.value.trim().length > 0;
+      var typologySelected = false;
+      nodeRadios.forEach(function(r) { if (r.checked) typologySelected = true; });
+      if (nodeDefineButton) {
+        nodeDefineButton.disabled = !(typeOk && nameOk && typologySelected);
+      }
+    }
+    if (nodeTypeSelect) {
+      nodeTypeSelect.addEventListener('change', updateNodeDefine);
+    }
+    if (nodeNameInput) {
+      nodeNameInput.addEventListener('input', updateNodeDefine);
+    }
+    nodeRadios.forEach(function(r) {
+      r.addEventListener('change', updateNodeDefine);
+    });
+    updateNodeDefine();
+  });
+  </script>
+
+  {# We intentionally removed the tabular summary of types and their nodes.
+     The hierarchical tree above provides sufficient overview. #}
+</section>
+{% endblock %}

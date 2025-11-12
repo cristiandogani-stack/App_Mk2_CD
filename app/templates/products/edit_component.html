@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Modifica attributi - {{ comp.structure.name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">{{ comp.structure.name }}</h2>
+  <p class="section-subtitle">Modifica gli attributi per il componente appartenente al tipo <strong>{{ comp.structure.type.name }}</strong> nel prodotto <strong>{{ product.name }}</strong>.</p>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if fields|length == 0 %}
+      <p class="muted">Nessun campo definito per questo tipo.</p>
+    {% else %}
+      {% for f in fields %}
+      <label class="field">
+        <span>{{ f.name }}</span>
+        <input name="field_{{ f.id }}" value="{{ current_values.get(f.id, '') }}" placeholder="Inserisci {{ f.name }}">
+      </label>
+      {% endfor %}
+    {% endif %}
+    <div style="display:flex; gap: 10px;">
+      <button class="btn primary" type="submit">Salva</button>
+      <a class="btn ghost" href="{{ url_for('products.detail', id=product.id) }}">Annulla</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

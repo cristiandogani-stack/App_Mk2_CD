@@ -1,0 +1,385 @@
+{% extends 'base.html' %}
+
+{#
+  Template used to define default attributes for StructureType and Structure entities.
+  It mirrors the layout of the product component editing pages but is simplified
+  for default assignment.  The template expects the following context variables:
+
+    entity      – the StructureType or Structure instance being edited
+    entity_type – either 'type' or 'node'
+    category    – one of 'assembly', 'part' or 'commercial', derived from flags
+    suppliers   – list of Supplier objects for select options
+    work_centers – list of WorkCenter objects for select options
+    work_phases – list of WorkPhase objects for select options
+
+  The form posts to the current URL and updates attributes on the entity.  Field
+  names are generic (e.g. description, notes, weight, work_phase_id, etc.) so
+  that the routes can update either default_* fields on StructureType or
+  the corresponding fields on Structure.  Typology flags are not displayed
+  here because they are defined when the entity is created.
+#}
+
+{% block title %}Definisci attributi – {{ entity.name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="content-wrapper" style="max-width:800px;margin:0 auto; position:relative;">
+    {# Display the entity name with revision suffix when editing a node.  When
+       editing a structure node (entity_type == 'node'), show the revision
+       suffix via the display_name property (e.g. MyPart_Rev.A).  For
+       structure types (entity_type == 'type') or other entities fall back
+       to the plain name.  Using the conditional here avoids errors when
+       entity.display_name is undefined for types. #}
+    {# When editing a node, display the current revision in a badge at the top right.
+       The badge appears only when a revision exists (revision_label returns
+       a non-empty string).  Use absolute positioning relative to the
+       content-wrapper to overlay the badge without affecting layout. #}
+    {% if entity_type == 'node' and entity.revision_label %}
+    <div class="revision-badge" style="position:absolute; top:0; right:0; padding:6px 10px; border:2px solid var(--glass-stroke); border-radius:8px; background: var(--card); font-weight:600;">
+      {{ entity.revision_label }}
+    </div>
+    {% endif %}
+    <h2 class="section-title" style="text-align:center;">
+      {% if entity_type == 'node' %}
+        {{ entity.display_name }}
+      {% else %}
+        {{ entity.name }}
+      {% endif %}
+    </h2>
+    {% if entity_type == 'type' %}
+      <p class="section-subtitle" style="text-align:center;">Definisci gli attributi predefiniti per questa tipologia</p>
+    {% else %}
+      <p class="section-subtitle" style="text-align:center;">Definisci gli attributi per questo nodo</p>
+    {% endif %}
+    <form method="post" class="form" style="margin-top:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Assembly: minimal attributes #}
+      {% if category == 'assembly' %}
+        <label class="field"><span>Descrizione</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="description" value="{{ entity.default_description or '' }}" placeholder="Testo descrittivo">
+          {% else %}
+            <input type="text" name="description" value="{{ entity.description or '' }}" placeholder="Testo descrittivo">
+          {% endif %}
+        </label>
+        <label class="field"><span>Note</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="notes" value="{{ entity.default_notes_plain or '' }}" placeholder="Note opzionali">
+          {% else %}
+            <input type="text" name="notes" value="{{ entity.notes_plain or '' }}" placeholder="Note opzionali">
+          {% endif %}
+        </label>
+        <label class="field"><span>Peso (kg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.default_weight|round(3) if entity.default_weight is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.weight|round(3) if entity.weight is not none else '' }}">
+          {% endif %}
+        </label>
+      {% elif category == 'part' %}
+        {# Shared top-level fields #}
+        <label class="field"><span>Peso (kg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.default_weight|round(3) if entity.default_weight is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.weight|round(3) if entity.weight is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Descrizione</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="description" value="{{ entity.default_description or '' }}">
+          {% else %}
+            <input type="text" name="description" value="{{ entity.description or '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Note</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="notes" value="{{ entity.default_notes_plain or '' }}">
+          {% else %}
+            <input type="text" name="notes" value="{{ entity.notes_plain or '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Fase di lavorazione</span>
+          <select name="work_phase_id">
+            <option value="">—</option>
+            {% for wp in work_phases %}
+              {% if entity_type == 'type' %}
+                <option value="{{ wp.id }}" {% if entity.default_work_phase_id == wp.id %}selected{% endif %}>{{ wp.name }}</option>
+              {% else %}
+                <option value="{{ wp.id }}" {% if entity.work_phase_id == wp.id %}selected{% endif %}>{{ wp.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>Tipo lavorazione</span>
+          <select name="processing_type" class="processing-type-select">
+            <option value="" {% if entity_type == 'type' and not entity.default_processing_type %}selected{% endif %}{% if entity_type == 'node' and not entity.processing_type %}selected{% endif %}>—</option>
+            <option value="internal" {% if entity_type == 'type' and entity.default_processing_type == 'internal' %}selected{% endif %}{% if entity_type == 'node' and entity.processing_type == 'internal' %}selected{% endif %}>Interna</option>
+            <option value="external" {% if entity_type == 'type' and entity.default_processing_type == 'external' %}selected{% endif %}{% if entity_type == 'node' and entity.processing_type == 'external' %}selected{% endif %}>Esterna</option>
+          </select>
+        </label>
+        <label class="field"><span>Fornitore</span>
+          <select name="supplier_id" class="supplier-select">
+            <option value="">—</option>
+            {% for s in suppliers %}
+              {% if entity_type == 'type' %}
+                <option value="{{ s.id }}" {% if entity.default_supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+              {% else %}
+                <option value="{{ s.id }}" {% if entity.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>Centro di lavorazione</span>
+          <select name="work_center_id" class="work-center-select">
+            <option value="" data-hourly-cost="">—</option>
+            {% for c in work_centers %}
+              {% if entity_type == 'type' %}
+                <option value="{{ c.id }}" data-hourly-cost="{{ c.hourly_cost }}" {% if entity.default_work_center_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% else %}
+                <option value="{{ c.id }}" data-hourly-cost="{{ c.hourly_cost }}" {% if entity.work_center_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>Tempo std (ore)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="standard_time" class="standard-time-input" value="{{ (entity.default_standard_time / 60.0)|round(2) if entity.default_standard_time is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="standard_time" class="standard-time-input" value="{{ (entity.standard_time / 60.0)|round(2) if entity.standard_time is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Lead time teorico (gg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="lead_time_theoretical" value="{{ (entity.default_lead_time_theoretical / 1440.0)|round(2) if entity.default_lead_time_theoretical is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="lead_time_theoretical" value="{{ (entity.lead_time_theoretical / 1440.0)|round(2) if entity.lead_time_theoretical is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Lead time reale (gg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="lead_time_real" value="{{ (entity.default_lead_time_real / 1440.0)|round(2) if entity.default_lead_time_real is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="lead_time_real" value="{{ (entity.lead_time_real / 1440.0)|round(2) if entity.lead_time_real is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Costo lavorazione (€/pz)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="processing_cost" class="processing-cost-input" value="{{ entity.default_processing_cost|round(2) if entity.default_processing_cost is not none else '' }}" readonly>
+          {% else %}
+            <input type="number" step="0.01" name="processing_cost" class="processing-cost-input" value="{{ entity.processing_cost|round(2) if entity.processing_cost is not none else '' }}" readonly>
+          {% endif %}
+        </label>
+      {% else %}
+        {# Commercial category #}
+        <label class="field"><span>Peso (kg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.default_weight|round(3) if entity.default_weight is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.001" name="weight" value="{{ entity.weight|round(3) if entity.weight is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Descrizione</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="description" value="{{ entity.default_description or '' }}">
+          {% else %}
+            <input type="text" name="description" value="{{ entity.description or '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Note</span>
+          {% if entity_type == 'type' %}
+            <input type="text" name="notes" value="{{ entity.default_notes_plain or '' }}">
+          {% else %}
+            <input type="text" name="notes" value="{{ entity.notes_plain or '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Fornitore</span>
+          <select name="supplier_id">
+            <option value="">—</option>
+            {% for s in suppliers %}
+              {% if entity_type == 'type' %}
+                <option value="{{ s.id }}" {% if entity.default_supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+              {% else %}
+                <option value="{{ s.id }}" {% if entity.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field"><span>Prezzo unitario (€/pz)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="price_per_unit" value="{{ entity.default_price_per_unit|round(2) if entity.default_price_per_unit is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="price_per_unit" value="{{ entity.price_per_unit|round(2) if entity.price_per_unit is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Lotto minimo (pz)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="1" name="minimum_order_qty" value="{{ entity.default_minimum_order_qty if entity.default_minimum_order_qty is not none else '' }}">
+          {% else %}
+            <input type="number" step="1" name="minimum_order_qty" value="{{ entity.minimum_order_qty if entity.minimum_order_qty is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Lead time teorico (gg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="lead_time_theoretical" value="{{ (entity.default_lead_time_theoretical / 1440.0)|round(2) if entity.default_lead_time_theoretical is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="lead_time_theoretical" value="{{ (entity.lead_time_theoretical / 1440.0)|round(2) if entity.lead_time_theoretical is not none else '' }}">
+          {% endif %}
+        </label>
+        <label class="field"><span>Lead time reale (gg)</span>
+          {% if entity_type == 'type' %}
+            <input type="number" step="0.01" name="lead_time_real" value="{{ (entity.default_lead_time_real / 1440.0)|round(2) if entity.default_lead_time_real is not none else '' }}">
+          {% else %}
+            <input type="number" step="0.01" name="lead_time_real" value="{{ (entity.lead_time_real / 1440.0)|round(2) if entity.lead_time_real is not none else '' }}">
+          {% endif %}
+        </label>
+      {% endif %}
+
+      {# Inventory management fields: stock threshold and replenishment quantity.
+         These fields are displayed for all categories (assembly, part,
+         commercial) and allow administrators to define the minimum stock
+         level at which a replenishment should be triggered and the
+         quantity to order when replenishing.  For structure types
+         (entity_type == 'type') the values are pulled from the corresponding
+         default_* attributes.  For individual nodes the values are read
+         directly from the structure.  Both inputs accept decimal values
+         to support fractional units when necessary. #}
+      <label class="field"><span>Soglia Magazzino</span>
+        {% if entity_type == 'type' %}
+          <input type="number" step="0.01" name="stock_threshold" value="{{ entity.default_stock_threshold|round(2) if entity.default_stock_threshold is not none else '' }}">
+        {% else %}
+          <input type="number" step="0.01" name="stock_threshold" value="{{ entity.stock_threshold|round(2) if entity.stock_threshold is not none else '' }}">
+        {% endif %}
+      </label>
+      <label class="field"><span>Quantità di rifornimento</span>
+        {% if entity_type == 'type' %}
+          <input type="number" step="0.01" name="replenishment_qty" value="{{ entity.default_replenishment_qty|round(2) if entity.default_replenishment_qty is not none else '' }}">
+        {% else %}
+          <input type="number" step="0.01" name="replenishment_qty" value="{{ entity.replenishment_qty|round(2) if entity.replenishment_qty is not none else '' }}">
+        {% endif %}
+      </label>
+      {# Compatible revisions selection for structure nodes
+        When editing an existing structure node (entity_type == 'node') the user may wish
+        to adjust which previous revisions remain compatible with the current revision.
+        Previously only the separate "Revisiona" form contained this multi‑select,
+        meaning changes made here were ignored when clicking the main "Salva" button.
+        Including the same control inside the primary save form ensures that
+        compatibility selections are persisted on save without requiring a
+        revision operation.  The current revision is always selected and cannot
+        be deselected (disabled) to avoid removing the present revision from
+        compatibility.  A hidden input is provided so that disabled options
+        still contribute their value to the POST body.
+      #}
+      {% if entity_type == 'node' and entity.revision_letters %}
+      <div class="field" style="margin-top:8px; display:flex; flex-direction:column;">
+        <span>Compatibile con:</span>
+        <select name="compatible_revisions" multiple style="max-width:200px;">
+          {# Use the revision letters list to build options.  The current revision
+             (entity.revision_label) is pre‑selected and disabled so it appears
+             selected but cannot be removed.  Other revisions reflect the
+             existing compatible_revisions_list on the entity. #}
+          {% for letter in entity.revision_letters %}
+          {% if letter == entity.revision_label %}
+          <option value="{{ letter }}" selected disabled>{{ letter }}</option>
+          {% else %}
+          <option value="{{ letter }}" {% if letter in entity.compatible_revisions_list %}selected{% endif %}>{{ letter }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+        {# Hidden input ensures the current revision (disabled above) is submitted with the form. #}
+        {% if entity.revision_label %}
+        <input type="hidden" name="current_revision" value="{{ entity.revision_label }}">
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Action buttons row.  Always include Save and Cancel.  When
+         editing a structure node, also show a Revisiona button that
+         submits to the products.revise_structure endpoint and a list of
+         existing revisions for compatibility.  The 'next' hidden field
+         uses the current full path so that after revising the user is
+         returned to this page. #}
+      <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; align-items:center;">
+        <button class="btn primary" type="submit">Salva</button>
+        <a class="btn ghost" href="{{ url_for('admin.structures') }}">Annulla</a>
+      </div>
+    </form>
+    {# Revision controls for structure nodes.  When editing a node display
+       a separate form outside of the save form.  This avoids nested
+       forms and ensures the revision submission sends only the
+       appropriate fields.  Include a multi‑select listing prior
+       revisions so the user can mark compatibility. #}
+    {% if entity_type == 'node' %}
+    <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="{{ url_for('products.revise_structure', structure_id=entity.id) }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <button class="btn secondary" type="submit" onclick="return confirm('Attenzione: la procedura di revisione è irreversibile.');">Revisiona</button>
+        {% if entity.revision_letters %}
+        <div class="field" style="display:flex; flex-direction:column; margin-top:4px;">
+          <span>Compatibile con:</span>
+          <select name="compatible_revisions" multiple style="max-width:200px;">
+            {# Ensure that the current revision is always selected and cannot be deselected in the multi‑select.
+               For the current revision option, mark it as selected and disabled so it appears selected but is
+               not interactive.  Other revisions retain their selected state based on the entity's
+               compatible_revisions_list.  Include a hidden input below the select to submit the current
+               revision value since disabled options are not included in POST data. #}
+            {% for letter in entity.revision_letters %}
+            {% if letter == entity.revision_label %}
+            <option value="{{ letter }}" selected disabled>{{ letter }}</option>
+            {% else %}
+            <option value="{{ letter }}" {% if letter in entity.compatible_revisions_list %}selected{% endif %}>{{ letter }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+          {# Hidden input ensures the current revision (disabled above) is submitted with the form. #}
+          {% if entity.revision_label %}
+          <input type="hidden" name="current_revision" value="{{ entity.revision_label }}">
+          {% endif %}
+        </div>
+        {% endif %}
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Compute processing cost for part category
+  function computeCost() {
+    var procSelect = document.querySelector('select.processing-type-select');
+    var workCenterSelect = document.querySelector('select.work-center-select');
+    var stdInput = document.querySelector('input.standard-time-input');
+    var costInput = document.querySelector('input.processing-cost-input');
+    if (!costInput) return;
+    var procType = procSelect ? procSelect.value : '';
+    var stdHours = stdInput ? parseFloat(stdInput.value) : NaN;
+    var hourlyCost = NaN;
+    if (workCenterSelect && workCenterSelect.selectedOptions.length > 0) {
+      var opt = workCenterSelect.selectedOptions[0];
+      if (opt.dataset.hourlyCost) hourlyCost = parseFloat(opt.dataset.hourlyCost);
+    }
+    if (procType === 'internal' && !isNaN(stdHours) && !isNaN(hourlyCost)) {
+      var cost = stdHours * hourlyCost;
+      costInput.value = cost.toFixed(2);
+    } else {
+      costInput.value = '';
+    }
+  }
+  // Bind events only if part category is shown
+  var procSelect = document.querySelector('select.processing-type-select');
+  var workCenterSelect = document.querySelector('select.work-center-select');
+  var stdInput = document.querySelector('input.standard-time-input');
+  if (procSelect) {
+    procSelect.addEventListener('change', computeCost);
+  }
+  if (workCenterSelect) {
+    workCenterSelect.addEventListener('change', computeCost);
+  }
+  if (stdInput) {
+    stdInput.addEventListener('input', computeCost);
+  }
+});
+</script>
+{% endblock %}

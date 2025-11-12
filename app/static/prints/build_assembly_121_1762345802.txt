@@ -1,0 +1,5 @@
+Assemblea: assieme (ID: 121)
+Componenti associati:
+ - comp1 (ID: 122)
+ - comp2 (ID: 123)
+Documenti dell'assieme:

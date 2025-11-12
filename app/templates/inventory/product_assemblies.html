@@ -1,0 +1,390 @@
+{% extends 'base.html' %}
+
+{#
+  Assemblies listing for a single product.
+
+  This page lists every structure flagged as an assembly that appears in the
+  selected product's bill of materials.  Each assembly is rendered as a
+  collapsible root node with its children (which may include parts,
+  commercial components or sub‑assemblies) nested underneath.  The
+  navigation bar at the top allows switching between the full product view
+  and the specialised views (assemblies, parts, commercial).  A search bar
+  filters the tree recursively on code and description.
+#}
+
+{% block title %}Magazzino – {{ product.name }}: Assiemi{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button: return to the previous page or the product detail if referrer is missing. #}
+  {# Always return to the product detail page.  Avoid relying on the HTTP referrer
+     which may refer to the add_stock route after loading stock. #}
+  <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: {{ product.name }} – Assiemi</h2>
+  {# Tab navigation between the product views.  Highlight the active tab using active_tab. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    {# Removed "Prodotto" tab from navigation. #}
+    <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+    <a href="{{ url_for('inventory.product_parts', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+    <a href="{{ url_for('inventory.product_commercial', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+    {# Archive tabs: separate component and assembly archives. #}
+    <a href="{{ url_for('inventory.product_archive_view', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Archivio&nbsp;componenti</a>
+    <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'archive_assiemi' else ' ghost' }}">Archivio&nbsp;assiemi</a>
+  </div>
+
+  {# Search bar and toggle button on the same row for assemblies.  Use flexbox to align
+     them and centre the group horizontally. #}
+  <div style="margin-bottom:12px; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:8px;">
+    <input type="text" id="assembly-search" class="input" placeholder="Cerca componenti..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+    <button id="toggle-all" type="button" class="btn small ghost">Esplodi&nbsp;tutto</button>
+  </div>
+
+  {#
+    Booking button for the finished product.
+
+    Assemblies constitute only part of a finished product, but operators
+    may still need to reserve the entire product directly from this
+    specialised view.  The button invokes ``prenota`` with the
+    ``PRODOTTO`` box type and the product name as the component code,
+    mirroring the behaviour on the product detail page.  After
+    selecting a quantity the API will create a production box and
+    redirect the user to the box detail page containing the guided
+    build interface.  Placing the button directly below the search
+    controls makes it readily accessible without interfering with
+    the assembly tree.
+  #}
+  {# Removed top-level Prenota prodotto button. #}
+
+  {% if assemblies|length == 0 %}
+    <p class="muted">Nessun assieme definito per questo prodotto.</p>
+  {% else %}
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Categoria</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {# Recursive macro to render an assembly node and its children.  The
+         index argument labels the top-level assemblies; nested children
+         inherit numbering via loop.index. #}
+      {% macro render_node(node, index) %}
+        {% set has_children = node.children|length > 0 %}
+        <details id="part-{{ node.id }}" class="component-node" {% if not has_children %}data-leaf="true"{% endif %}>
+          <summary>
+            <div class="component-row">
+              <div class="col-number">{{ index if index is not none else '' }}</div>
+              <div class="col-image">
+                {% if node.image_filename %}
+                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + node.image_filename) }}" alt="{{ node.name }}">
+                {% else %}
+                  <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ node.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                {% endif %}
+              </div>
+              <div class="col-code">{{ node.name }}</div>
+              <div class="col-desc">{{ node.description or '—' }}</div>
+              <div class="col-revision">{{ node.revision_label }}</div>
+              <div class="col-category">
+                {% if node.flag_assembly %}Assieme{% elif node.flag_commercial %}Commerciale{% else %}Parte{% endif %}
+              </div>
+              <div class="col-qty">{{ (node.quantity_in_stock or 0)|int }}</div>
+              <div class="col-actions" style="position:relative;">
+                {#
+                  Assemblies should be built rather than reserved.  Show a
+                  "Costruisci" button with a green indicator when at least
+                  one unit can be assembled from current stock.  For
+                  non‑assemblies, display the standard Prenota/Apri actions.
+                #}
+                {% if node.flag_assembly %}
+                  {# Use available_qty when defined to account for assemblies already reserved in production boxes.
+                     Fall back to complete_qty if available_qty is not set. #}
+                  {% set avail = node.available_qty if node.available_qty is not none else node.complete_qty %}
+                  {# Place the semaphore absolutely in the top right corner of the actions cell.  Because the cell uses
+                     flexbox for its direct children, the buttons will remain vertically centred. #}
+                  {% if avail and avail > 0 %}
+                    <span style="position:absolute; top:0; right:0; color:#10b981; font-weight:600;">
+                      🟢 {{ avail }}
+                    </span>
+                  {% else %}
+                    <span style="position:absolute; top:0; right:0; color:#ef4444; font-weight:600;">
+                      🔴 0
+                    </span>
+                  {% endif %}
+                  {# Action buttons: use a margin-right to separate them. #}
+                  {% if avail and avail > 0 %}
+                    <a href="javascript:void(0);" class="btn primary small" onclick='costruisciAssembly("{{ node.name }}", {{ avail }})' style="margin-right:4px;">Costruisci</a>
+                  {% else %}
+                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5; margin-right:4px;">Costruisci</a>
+                  {% endif %}
+                  <a href="javascript:void(0);" class="btn ghost small" onclick='apri(window.currentProductId, {{ node.name|tojson }})'>Apri</a>
+                {% else %}
+                  {# For non‑assemblies, call prenota with appropriate box type and component code and filter apri by component #}
+                  <button class="btn primary small" type="button"
+                          onclick='prenota(window.currentProductId, "{{ 'COMMERCIALE' if node.flag_commercial else 'PARTE' }}", {{ node.name|tojson }})' style="margin-right:4px;">Prenota</button>
+                  <button class="btn ghost small" type="button" onclick='apri(window.currentProductId, {{ node.name|tojson }})'>Apri</button>
+                {% endif %}
+              </div>
+            </div>
+          </summary>
+          {% if has_children %}
+            <div class="children">
+              {% for child in node.children|sort(attribute='id') %}
+                {{ render_node(child, loop.index) }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </details>
+      {% endmacro %}
+      {# Render each top-level assembly with its nested children #}
+      {% for assembly in assemblies %}
+        {{ render_node(assembly, loop.index) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <script>
+  // Simple recursive filter for the assembly tree.  Hides nodes that do
+  // not match the search query.  When a parent has no matching
+  // descendants it is also hidden.  Utilises :scope to restrict
+  // selectors to the current node.
+  document.addEventListener('DOMContentLoaded', function(){
+    const input = document.getElementById('assembly-search');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      const topNodes = document.querySelectorAll('.component-tree > details');
+      topNodes.forEach(node => {
+        const match = filterDetail(node, query);
+        node.style.display = (match || query === '') ? '' : 'none';
+      });
+    });
+    function filterDetail(detailEl, query) {
+      let match = false;
+      const summaryRow = detailEl.querySelector(':scope > summary .component-row');
+      if (summaryRow) {
+        const text = summaryRow.textContent.toLowerCase();
+        if (text.includes(query)) {
+          match = true;
+        }
+      }
+      const childrenContainer = detailEl.querySelector(':scope > .children');
+      if (childrenContainer) {
+        const childDetails = Array.from(childrenContainer.children).filter(e => e.tagName.toLowerCase() === 'details');
+        let anyChildMatch = false;
+        childDetails.forEach(child => {
+          const childMatch = filterDetail(child, query);
+          if (childMatch) anyChildMatch = true;
+        });
+        match = match || anyChildMatch;
+      }
+      return match;
+    }
+  });
+  </script>
+
+  {# Toggle all script.  Similar to the product detail page, this handler toggles the open state of all <details> elements
+     within the component tree.  When every node is open, clicking collapses them; otherwise it expands them.  The button
+     text switches accordingly. #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const toggleBtn = document.getElementById('toggle-all');
+    if (!toggleBtn) return;
+    toggleBtn.addEventListener('click', function(){
+      const detailsNodes = document.querySelectorAll('.component-tree details');
+      const allOpen = Array.from(detailsNodes).every(d => d.hasAttribute('open'));
+      detailsNodes.forEach(d => {
+        if (allOpen) {
+          d.removeAttribute('open');
+        } else {
+          d.setAttribute('open', '');
+        }
+      });
+      this.textContent = allOpen ? 'Esplodi tutto' : 'Comprimi tutto';
+    });
+  });
+  </script>
+
+  {# Define global variables and helper functions for the reservation workflow #}
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      window.currentProductId = {{ product.id }};
+    });
+
+    /**
+     * Create a reservation for the given product.  Optional parameters
+     * ``boxType`` and ``componentCode`` allow overriding the type of
+     * production box and the component name used in the DataMatrix.
+     * When provided, these values are sent to the API so that parts
+     * and commercial components generate correct codes rather than
+     * inheriting the root component of the product.
+     *
+     * @param {number} productId – The ID of the product to reserve.
+     * @param {string} [boxType] – Optional override ("PARTE", "COMMERCIALE", etc.).
+     * @param {string} [componentCode] – Optional component name for the DataMatrix.
+     */
+    function prenota(productId, boxType, componentCode) {
+      const qtyStr = prompt('Quantità da prenotare', '1');
+      if (qtyStr === null) return;
+      const qty = parseInt(qtyStr, 10);
+      if (!qty || qty <= 0) {
+        alert('Quantità non valida');
+        return;
+      }
+      const payload = { productId: productId, quantity: qty, note: '' };
+      if (boxType) payload.boxType = boxType;
+      if (componentCode) payload.componentCode = componentCode;
+      fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('Errore nella creazione della prenotazione');
+          return res.json();
+        })
+        .then(data => {
+          const codes = data.items.map(item => item.datamatrix).join(', ');
+          alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+          if (data.productionBoxId) {
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+          }
+        })
+        .catch(err => {
+          alert('Si è verificato un errore: ' + err.message);
+          console.error(err);
+        });
+    }
+
+    /*
+     * Apri: mostra la lista dei componenti caricati per un dato prodotto.
+     * Se viene fornito un codice componente, filtra i risultati mostrando
+     * solo i codici DataMatrix con un campo P= corrispondente a quel nome.
+     */
+    function apri(productId, componentCode) {
+      fetch('/api/products/' + productId + '/loaded')
+        .then(res => {
+          if (!res.ok) throw new Error('Errore nella chiamata API');
+          return res.json();
+        })
+        .then(data => {
+          const items = data.items || [];
+          // Filter items by component code when provided by inspecting P= field
+          let filtered = items;
+          if (componentCode) {
+            const code = componentCode.toString();
+            filtered = items.filter(it => {
+              const parts = it.datamatrix ? it.datamatrix.split('|') : [];
+              for (const p of parts) {
+                if (p.startsWith('P=')) {
+                  return p.slice(2) === code;
+                }
+              }
+              return false;
+            });
+          }
+          const modal = document.getElementById('loadedModal');
+          const content = document.getElementById('loadedItemsContent');
+          let html = '';
+          if (filtered.length === 0) {
+            html = '<p class="muted">Nessun componente caricato per questo elemento.</p>';
+          } else {
+            html += '<table class="glass" style="width:100%; border-collapse:collapse;">';
+            html += '<thead><tr><th>#</th><th>DataMatrix</th><th>Box</th><th>Stato</th></tr></thead><tbody>';
+            filtered.forEach((it, idx) => {
+              html += '<tr style="border-bottom:1px solid var(--glass-stroke);">';
+              html += '<td style="padding:6px;">' + (idx + 1) + '</td>';
+              html += '<td style="padding:6px; font-family:monospace;">' + it.datamatrix + '</td>';
+              html += '<td style="padding:6px;">' + (it.boxId || '—') + '</td>';
+              html += '<td style="padding:6px;">' + (it.status || 'COMPLETATO') + '</td>';
+              html += '</tr>';
+            });
+            html += '</tbody></table>';
+          }
+          content.innerHTML = html;
+          modal.style.display = 'block';
+        })
+        .catch(err => {
+          alert('Si è verificato un errore: ' + err.message);
+          console.error(err);
+        });
+    }
+
+    // Close the loaded items modal
+    function closeLoadedModal() {
+      const modal = document.getElementById('loadedModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    /**
+     * Reserve a number of assemblies for production and create a production box.
+     * Prompts the user for a quantity up to maxQty, then calls the
+     * reservations API with an override to ensure the box is treated as
+     * an assembly.  On success, redirects to the production box page.
+     *
+     * @param {string} assemblyName - The component name of the assembly.
+     * @param {number} maxQty - The maximum number of units that can be built.
+     */
+    function costruisciAssembly(assemblyName, maxQty) {
+      if (!maxQty || maxQty <= 0) {
+        alert('Nessuna unità costruibile disponibile.');
+        return;
+      }
+      const qtyStr = prompt('Quantità da costruire (max ' + maxQty + ')', '1');
+      if (qtyStr === null) return; // cancellato
+      const qty = parseInt(qtyStr, 10);
+      if (!qty || qty <= 0 || qty > maxQty) {
+        alert('Quantità non valida.');
+        return;
+      }
+      fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: window.currentProductId,
+          quantity: qty,
+          note: '',
+          boxType: 'ASSIEME',
+          componentCode: assemblyName
+        })
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('Errore nella creazione della prenotazione');
+          return res.json();
+        })
+        .then(data => {
+          const codes = data.items.map(i => i.datamatrix).join(', ');
+          alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+          if (data.productionBoxId) {
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+          }
+        })
+        .catch(err => {
+          alert('Si è verificato un errore: ' + err.message);
+          console.error(err);
+        });
+    }
+  </script>
+
+  {# Modal for displaying loaded components #}
+  <div id="loadedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; overflow:auto;">
+    <div style="background:var(--glass-bg); margin:60px auto; padding:20px; border-radius:12px; max-width:600px; width:90%; position:relative;">
+      <h3 style="margin-top:0;">Componenti caricati</h3>
+      <div id="loadedItemsContent"></div>
+      <div style="text-align:right; margin-top:12px;">
+        <button class="btn primary small" onclick="closeLoadedModal()">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

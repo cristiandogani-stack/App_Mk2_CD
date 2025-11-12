@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{#
+  Production dashboard for loading stock into the warehouse.
+
+  This redesigned page consolidates mechanical parts and commercial
+  components into a single, easy‑to‑scan list.  A header row labels
+  each column and subsequent rows show the part name, description,
+  category, on‑hand quantity and a small inline form to add stock.
+  Operators can enter a quantity and submit directly from the list.
+  Assemblies are intentionally excluded because they are built via the
+  warehouse dashboard rather than loaded here.
+
+  When no parts exist, a muted message informs the user.  The route
+  handler provides the ``parts`` variable, an ordered list of all
+  non‑assembly structures flagged as part or commercial.
+#}
+
+{% block title %}Produzione – Argal{% endblock %}
+
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Produzione</h2>
+  {# Responsive list of production boxes.
+     Each box is rendered as a card with its code, product name,
+     quantity of items and current status.  The "Apri" button
+     navigates to the box detail page where operators can perform
+     the final loading via the "Carica" action.  On small screens
+     the cards stack vertically to ensure readability. #}
+  {% if boxes|length == 0 %}
+    <p class="muted">Nessun box di produzione presente.</p>
+  {% else %}
+    <div class="box-list" style="display:flex; flex-direction:column; gap:12px;">
+      {% for box in boxes %}
+        {# Determine the first product associated with this box.  A box may contain
+           multiple stock items of the same product.  Use the first item's
+           product to obtain the article code and image. #}
+        {% set prod = box.stock_items[0].product if box.stock_items else None %}
+        <div class="glass" style="padding:12px; border-radius:12px; width:100%; position:relative; cursor:pointer;" onclick="window.location.href='{{ url_for('production.production_box_view', box_id=box.id) }}'">
+          {# Badge indicating the box type: P=parte, C=commerciale, A=assieme.  Placed centrally over the card. #}
+          {% set type_letter = 'P' %}
+          {% set type_color = '#10b981' %}
+          {% if box.box_type == 'ASSIEME' %}
+            {% set type_letter = 'A' %}
+            {% set type_color = '#3b82f6' %}
+          {% elif box.box_type == 'COMMERCIALE' %}
+            {% set type_letter = 'C' %}
+            {% set type_color = '#ec4899' %}
+          {% endif %}
+          <span style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:{{ type_color }}; color:white; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:bold;">
+            {{ type_letter }}
+          </span>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            {# Product image on the left.  If the product defines an image_filename
+               use it; otherwise fall back to a placeholder gear icon. #}
+            <div style="flex-shrink:0; width:64px; height:64px; display:flex; align-items:center; justify-content:center;">
+              {# Display the component image when available.  Use the root_image_filename
+                 property attached to the box; if absent, fall back to the
+                 product image and finally to the gear placeholder. #}
+              {% if box.root_image_filename %}
+                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + box.root_image_filename) }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+              {% else %}
+                <img src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+              {% endif %}
+            </div>
+            <div style="flex:1 1 auto; min-width:160px;">
+              {# Show the component (structure) name as the main title.  When
+                 root_structure is available use its name; otherwise fall back
+                 to the product name or box code. #}
+              <h3 style="margin:0 0 4px; font-size:18px;">
+                {% if box.root_structure and box.root_structure.name %}
+                  {{ box.root_structure.name }}
+                {% elif prod %}
+                  {{ prod.name }}
+                {% else %}
+                  {{ box.code }}
+                {% endif %}
+              </h3>
+              <p style="margin:0; font-size:14px; color:var(--text-muted);">
+                Box: {{ box.code }}
+              </p>
+              <p style="margin:0; font-size:14px; color:var(--text-muted);">
+                Quantità: {{ box.stock_items|length }}
+              </p>
+              <p style="margin:0; font-size:14px; color:var(--text-muted);">
+                Stato: {{ box.status }}
+              </p>
+            </div>
+            <div style="flex-shrink:0;">
+              {# The entire card is clickable, so no separate Apri button is needed #}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

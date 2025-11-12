@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{#
+  Commercial components listing for the warehouse.
+
+  This page displays all components flagged as commercial.  Assemblies
+  are excluded since commercial items cannot themselves be assemblies.
+  The layout matches the parts view: a tab bar for navigation and a
+  flat list of components with columns for index, image placeholder,
+  code, description, category, quantity and actions.  Each row
+  includes a link to the production module so operators can quickly
+  load stock for commercial items.
+#}
+
+{% block title %}Magazzino – Componenti commerciali{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button to return to the previous page.  Uses the referrer URL
+     if available, falling back to the warehouse index. #}
+  {# Always return to the inventory overview instead of relying on the HTTP referrer. #}
+  <a href="{{ url_for('inventory.index') }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: Componenti commerciali</h2>
+  {# Tab navigation reused from other warehouse pages.  #}
+  {# Full category navigation on the commercial components listing.  Users can switch
+     between assemblies, parts, commercial items, products and history. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory.list_assemblies') }}"
+       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+    <a href="{{ url_for('inventory.list_parts') }}"
+       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+    <a href="{{ url_for('inventory.list_commercial') }}"
+       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    {# Link to the production history.  When the archive tab is active highlight
+       this button.  The label has been renamed from "Archivio assiemi" to
+       "Storico produzione" to reflect the new purpose of the page. #}
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+
+  {# Search bar to quickly filter the list of commercial components.  Center the input horizontally. #}
+  <div style="margin-bottom:12px; display:flex; justify-content:center;">
+    <input type="text" id="commercial-search" class="input" placeholder="Cerca..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+  </div>
+
+  {% if parts|length == 0 %}
+    <p class="muted">Nessun componente commerciale definito.</p>
+  {% else %}
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Categoria</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {%- for part in parts %}
+      {#
+        For commercial components, wrap each row in a <details> element with
+        class `component-node` to achieve a card layout consistent with
+        assemblies and parts.  The `data-leaf` attribute hides the arrow
+        indicator as there are no children to expand.  The summary contains
+        the component-row grid used throughout the warehouse module.
+      #}
+      <details id="part-{{ part.id }}" class="component-node" data-leaf="true">
+        <summary>
+          <div class="component-row">
+            <div class="col-number">{{ loop.index }}</div>
+            <div class="col-image">
+              {% if part.display_image_filename %}
+                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}">
+              {% else %}
+                <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+              {% endif %}
+            </div>
+            <div class="col-code">{{ part.name }}</div>
+            <div class="col-desc">{{ part.description or '—' }}</div>
+            <div class="col-revision">{{ part.revision_label }}</div>
+            <div class="col-category">Commerciale</div>
+            <div class="col-qty">{{ (part.quantity_in_stock or 0)|int }}</div>
+            <div class="col-actions">
+              <a href="{{ url_for('inventory.load_component', part_id=part.id) }}" class="btn ghost small">Carica</a>
+            </div>
+          </div>
+        </summary>
+      </details>
+      {%- endfor %}
+    </div>
+  {% endif %}
+
+  <script>
+  // Filter the list of commercial components by code or description.  Each
+  // component is wrapped in a <details> element; toggle the visibility
+  // of each node based on whether its text matches the query.
+  document.addEventListener('DOMContentLoaded', function(){
+    const input = document.getElementById('commercial-search');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      const nodes = document.querySelectorAll('.component-tree details.component-node');
+      nodes.forEach(node => {
+        const text = node.textContent.toLowerCase();
+        node.style.display = (query === '' || text.includes(query)) ? '' : 'none';
+      });
+    });
+  });
+  </script>
+
+  {#
+    Scroll back to and highlight the updated commercial component after a
+    stock load.  The production.add_stock route appends a fragment
+    ``#part-<id>`` to the referrer, which is captured here.  When such a
+    fragment is present this script scrolls the corresponding row into
+    view and briefly applies a highlight effect to aid user orientation.
+  #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#part-')) {
+      const id = hash.substring(1);
+      const target = document.getElementById(id);
+      if (target) {
+        try {
+          target.scrollIntoView({behavior: 'smooth', block: 'center'});
+        } catch (err) {
+          target.scrollIntoView();
+        }
+        const row = target.querySelector('.component-row');
+        const el = row || target;
+        el.classList.add('highlight-row');
+        setTimeout(() => {
+          el.classList.remove('highlight-row');
+        }, 2000);
+      }
+    }
+  });
+  </script>
+
+</section>
+{% endblock %}

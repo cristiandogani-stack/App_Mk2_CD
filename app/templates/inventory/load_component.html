@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+
+{#
+  Load component page for parts and commercial items.
+
+  This template presents a simple form that allows the operator to
+  increment the stock of a single structure while uploading any
+  documentation flagged in the checklist.  The layout mirrors the
+  assembly build interface on a smaller scale: a quantity field, a list
+  of download links for the original documents and corresponding file
+  inputs for uploading compiled versions.  When no documents are
+  configured for the component a muted message is shown instead of
+  the file inputs.
+#}
+
+{% block title %}Carica {{ part.name }} – Magazzino{% endblock %}
+
+{% block content %}
+  {% if embedded %}
+  <style>
+    /* When this page is rendered inside a modal, hide the global app
+       header and mobile navigation so only the form contents appear. */
+    .app-header,
+    .nav-mobile {
+      display: none !important;
+    }
+
+    /* Hide only the back‑link and cancel buttons in the embedded view.  Do
+       not hide all ghost buttons otherwise the per‑document download
+       buttons would disappear.  Assign dedicated classes to these
+       elements and target them here. */
+    .back-link,
+    .cancel-link {
+      display: none !important;
+    }
+  </style>
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      // Prompt for confirmation before submitting when embedded.  When the
+      // user confirms, allow the form submission to proceed.  The parent
+      // page (production_box.html) listens for navigation events on the
+      // iframe and will close the modal and reload the list upon
+      // completion.  No explicit parent manipulation is performed here.
+      if (!confirm('Confermare il caricamento del componente?')) {
+        e.preventDefault();
+      }
+    });
+  });
+  </script>
+  {% endif %}
+<section class="section">
+  <h2 class="section-title">Carica {{ part.name }}</h2>
+  {# Back link: return to the previous page.  Uses the back_url passed
+     from the view to ensure the user returns to the correct list. #}
+  <a href="{{ back_url }}" class="btn ghost small back-link" style="margin-bottom:12px;">Indietro</a>
+  <div class="glass" style="padding:16px; text-align:center;">
+    <form method="post" enctype="multipart/form-data" class="form" style="text-align:center;">
+      {# Display the component image above the form contents.  Use the
+         computed ``display_image_filename`` attribute if available; otherwise
+         fall back to a placeholder gear icon.  The image is centred and
+         constrained to a reasonable size to mirror the assembly build
+         interface. #}
+      <div style="text-align:center; margin-bottom:12px;">
+        {% if part.display_image_filename %}
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto;">
+        {% else %}
+          <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto; filter: invert(1); opacity:0.7;">
+        {% endif %}
+      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# The quantity field has been removed.  Loading a component now
+         always adds a single unit (or the entire lot when lot management
+         is enabled).  The backend defaults to quantity 1 when no value
+         is submitted. #}
+      {% if doc_defs %}
+      <h5 style="margin:16px 0 6px; font-size:14px; font-weight:600;">Documenti</h5>
+      <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
+        {% for doc in doc_defs %}
+          {# Each document is laid out vertically for better readability on mobile.  The
+             label and download link are stacked and centred, followed by the file
+             input occupying the full width. #}
+          <div class="doc-item" style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              {# Display the document type using the human‑readable label when available;
+                 fall back to the display_name provided by the checklist definition. #}
+              <span style="font-size:14px; font-weight:600;">{{ doc_label_map.get(doc.type, doc.display_name) }}</span>
+              {# Use a standard ghost button (without the small modifier) for the
+                 per‑document download link so that it appears more
+                 prominent next to the document title.  The 'small'
+                 class made the link less visible on some devices. #}
+              <a href="{{ url_for('products.download_file', filename=doc.original_path) }}" target="_blank" class="btn ghost" style="white-space:nowrap;">Scarica</a>
+            </div>
+            <input type="file" name="{{ doc.field_name }}" required style="width:100%;">
+            <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
+          </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted" style="margin:16px 0;">Nessuna documentazione richiesta per questo componente.</p>
+      {% endif %}
+
+      {# Traffic light indicator: shows green when no documents are required, red otherwise. #}
+      <div style="margin-top:16px;">
+        <span title="Documenti" style="font-size:24px; vertical-align:middle;">
+          {# Initially render the semaphore based on docs_ready which is
+             True when no documentation is required.  The dynamic
+             script below will update this span whenever the user
+             selects files for each required document. #}
+          {{ '🟢' if docs_ready else '🔴' }}
+        </span>
+      </div>
+      {# Action buttons: primary submit and cancel.  Download links are displayed next
+        to each document title above; no additional download buttons are
+        repeated here to avoid clutter.  This group appears at the bottom of
+        the form so operators can finalise the loading after uploading
+        documents. #}
+      <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px; width:100%;">
+        <button type="submit" class="btn primary full">Carica</button>
+        <a href="{{ back_url }}" class="btn ghost full cancel-link">Annulla</a>
+      </div>
+    </form>
+  </div>
+</section>
+<script>
+// Display selected file names next to each file input in the component load form
+// This mirrors the behaviour implemented in the assembly build interface.  When
+// a user chooses a file, the adjacent span with class "file-name" shows the
+// selected filename.  Clearing the input empties the span.  Without this
+// helper operators would not see the chosen filename in the condensed layout.
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.querySelector('form');
+  if (!form) return;
+  form.addEventListener('change', function(e){
+    const target = e.target;
+    if (target && target.type === 'file') {
+      const fileNameSpan = target.parentElement.querySelector('.file-name');
+      if (fileNameSpan) {
+        if (target.files && target.files.length > 0) {
+          fileNameSpan.textContent = target.files[0].name;
+        } else {
+          fileNameSpan.textContent = '';
+        }
+      }
+    }
+  });
+});
+</script>
+
+{#
+  Dynamic update for document readiness on the component load page.
+
+  The semaphore next to the document section turns green only when
+  every required file input has a selected file.  The submit button
+  remains disabled until all required documents are chosen.  When no
+  documentation is required the semaphore is immediately green and
+  the button remains enabled.  This mirrors the interactive feedback
+  provided in the assembly build interface.
+#}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.querySelector('form');
+  if (!form) return;
+  const fileInputs = form.querySelectorAll('input[type="file"]');
+  const semSpan = form.querySelector('span[title="Documenti"]');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  function updateDocReady() {
+    // If no documents are required the indicator is green by default
+    let docsOk = (fileInputs.length === 0);
+    if (!docsOk) {
+      docsOk = true;
+      fileInputs.forEach(function(inp){
+        if (!inp.files || inp.files.length === 0) {
+          docsOk = false;
+        }
+      });
+    }
+    if (semSpan) {
+      semSpan.textContent = docsOk ? '🟢' : '🔴';
+    }
+    if (submitBtn) {
+      // Disable the submit button until all required docs are selected
+      submitBtn.disabled = !docsOk;
+    }
+  }
+  // Attach listeners to each file input
+  fileInputs.forEach(function(inp){
+    inp.addEventListener('change', updateDocReady);
+  });
+  // Perform an initial check on page load
+  updateDocReady();
+});
+</script>
+{% endblock %}

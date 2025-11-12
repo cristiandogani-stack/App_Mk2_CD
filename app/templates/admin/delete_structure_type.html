@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Conferma eliminazione tipo – Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Elimina tipo struttura</h2>
+  <p>
+    Sei sicuro di voler eliminare il tipo <strong>{{ type.name }}</strong>? Questa operazione rimuoverà
+    anche tutti i nodi associati e non potrà essere annullata.
+  </p>
+  <form method="post" class="form-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn danger" type="submit">Conferma eliminazione</button>
+    <a class="btn ghost" href="{{ url_for('admin.structures') }}">Annulla</a>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{# Update the page title to reflect the renamed module.  The page still
+   lists product records, but throughout the UI the term "Anagrafiche" is
+   used instead of "Prodotti" to match the updated navigation. #}
+{% block title %}Anagrafiche - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Anagrafiche</h2>
+  <p class="section-subtitle">Elenco delle anagrafiche definite nell'applicazione.</p>
+  {# Il pulsante "Nuovo prodotto" è stato nascosto come richiesto.
+     Commentiamo l'ancora per non visualizzarlo ma lasciamo il codice per
+     eventuali riattivazioni future. #}
+  <!-- <a class="btn primary" href="{{ url_for('products.create') }}">Nuovo prodotto</a> -->
+  {# Barra di ricerca per componenti: consente di cercare componenti e
+     navigare direttamente al prodotto che li contiene.  La ricerca
+     restituisce suggerimenti tramite l'endpoint /products/search_suggestions e,
+     selezionando un elemento, reindirizza alla pagina dettaglio del prodotto
+     con il parametro highlight impostato per evidenziare la riga. #}
+  <div style="margin-top:12px; margin-bottom:12px;">
+    <form id="product-search-form" class="product-search" style="max-width:400px; margin:0; position:relative;">
+      <input id="product-search-input" type="search" placeholder="Cerca componenti…" autocomplete="off" style="width:100%; padding:6px 10px; border-radius:8px; border:1px solid var(--glass-stroke); background: var(--card); color: var(--text);">
+      <div id="product-search-results" class="product-search-results" style="display:none;"></div>
+    </form>
+  </div>
+  <div style="height:12px;"></div>
+  {% if products|length == 0 %}
+    <p class="muted">Nessun prodotto presente.</p>
+  {% else %}
+    <div class="grid grid-3" style="gap:12px;">
+      {% for p in products %}
+      {#
+        Ogni carta prodotto è cliccabile: l'utente può aprire il dettaglio
+        semplicemente cliccando sull'intero box.  Le azioni "Modifica" e
+        "Elimina" sono contrassegnate con la classe `prevent-card-open` per
+        impedire la propagazione dell'evento di click.
+      #}
+      <div class="card glass product-card" data-url="{{ url_for('products.detail', id=p.id) }}" style="padding:12px; cursor:pointer; min-height:300px;">
+        {# Display the product name at the very top of the card.  This moves
+           the title above the image, as requested by the updated design.  The
+           text is centred to align with the specification lines below. #}
+        {# Center the product title across the full card width and use the same
+           typography as the main page title.  The `section-title` class
+           applies the same font size and weight used for the “Anagrafiche”
+           heading.  Inline styles override margins to fit within the card. #}
+        <h3 class="section-title" style="margin:0 0 8px 0; text-align:center; width:100%; display:block;">{{ p.name }}</h3>
+        <div style="height:140px; display:flex; align-items:center; justify-content:center; margin-bottom:8px;">
+          {% if p.image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + p.image_filename) }}" alt="{{ p.name }}" style="max-width:100%; max-height:100%;">
+          {% else %}
+            <!-- Show a placeholder image when no product image is defined -->
+            <img src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ p.name }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        {# Only show the description when it is defined.  When no
+           description is provided the placeholder dash has been
+           removed entirely.  For long descriptions the collapsed
+           class hides overflow and a "Mostra altro" link is
+           rendered below to expand the text. #}
+        {% if p.description %}
+          <div class="description-container {% if p.description|length > 250 %}collapsed{% endif %}" style="text-align:center;">
+            {{ p.description }}
+          </div>
+          {% if p.description|length > 250 %}
+            <span class="show-more-btn prevent-card-open" style="display:block; margin-top:4px; text-align:center;">Mostra altro</span>
+          {% endif %}
+        {% endif %}
+        {# Specification lines: show key attributes beneath the description.
+           Each line is centred to create a compact summary.  When a value
+           is absent a dash is displayed to maintain layout consistency. #}
+        {# Wrap the specification lines in a glass card to mirror the
+           rectangular box used in the product detail page.  Adding the
+           `glass` class gives the box a translucent background, border and
+           subtle shadow. #}
+        <div class="product-specs glass" style="padding:12px; margin-top:8px; text-align:center; font-size:0.9em;">
+          <p><strong>Fluid inlet:</strong>
+            {% if p.fluid_in_let %}
+              {{ p.fluid_in_let }} BSPP
+            {% else %}
+              —
+            {% endif %}
+          </p>
+          <p><strong>Flow rate:</strong>
+            {% if p.flow_rate is not none %}
+              {{ p.flow_rate }} L/m
+            {% else %}
+              —
+            {% endif %}
+          </p>
+          <p><strong>Dimensioni:</strong>
+            {% if p.dimension_x is not none or p.dimension_y is not none or p.dimension_z is not none %}
+              {{ p.dimension_x if p.dimension_x is not none else '—' }} × {{ p.dimension_y if p.dimension_y is not none else '—' }} × {{ p.dimension_z if p.dimension_z is not none else '—' }} mm
+            {% else %}
+              —
+            {% endif %}
+          </p>
+          <p><strong>Peso totale componenti:</strong> {% if p.total_weight %}{{ p.total_weight|round(3) }} kg{% else %}—{% endif %}</p>
+        </div>
+        <div style="margin-top:8px;">
+          <a class="btn ghost small prevent-card-open" href="{{ url_for('products.edit', id=p.id) }}">Modifica</a>
+          <form method="post" action="{{ url_for('products.delete', id=p.id) }}" style="display:inline;" class="prevent-card-open">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn danger small" type="submit" onclick="return confirm('Eliminare questo prodotto?');">Elimina</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {#
+    Script per gestire l'apertura del dettaglio prodotto al click sul box e
+    l'espansione della descrizione.  Le carte con classe `product-card` sono
+    rese cliccabili: se il target del click non appartiene a un elemento
+    contrassegnato con la classe `prevent-card-open` allora si apre la
+    pagina di dettaglio del prodotto.  Inoltre, gli elementi con classe
+    `show-more-btn` rimuovono lo stato "collapsed" dal contenitore
+    precedente permettendo di visualizzare l'intera descrizione.
+  #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    // Gestione click sulla card
+    document.querySelectorAll('.product-card').forEach(function(card){
+      card.addEventListener('click', function(e){
+        // Se l'utente ha cliccato su un elemento che non deve aprire la card, fermiamo la propagazione
+        if (e.target.closest('.prevent-card-open')){
+          return;
+        }
+        var url = this.getAttribute('data-url');
+        if (url){ window.location = url; }
+      });
+    });
+    // Gestione del "Mostra altro"
+    document.querySelectorAll('.show-more-btn').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var desc = this.previousElementSibling;
+        if (desc){ desc.classList.remove('collapsed'); }
+        // Nascondi il link dopo aver espanso il testo
+        this.style.display = 'none';
+      });
+    });
+
+    // Ricerca componenti: suggerisce componenti e reindirizza al prodotto con evidenziazione.
+    var searchForm = document.getElementById('product-search-form');
+    var searchInput = document.getElementById('product-search-input');
+    var resultsContainer = document.getElementById('product-search-results');
+    var suggestionMap = {};
+    if (searchInput && resultsContainer && searchForm) {
+      searchInput.addEventListener('input', function(){
+        var query = searchInput.value.trim();
+        if (query.length < 2) {
+          resultsContainer.innerHTML = '';
+          resultsContainer.style.display = 'none';
+          suggestionMap = {};
+          return;
+        }
+        fetch(`/products/search_suggestions?q=${encodeURIComponent(query)}`)
+          .then(function(resp){ return resp.json(); })
+          .then(function(data){
+            suggestionMap = {};
+            resultsContainer.innerHTML = '';
+            if (data.length > 0) {
+              resultsContainer.style.display = 'block';
+            } else {
+              resultsContainer.style.display = 'none';
+            }
+            data.forEach(function(item){
+              var label = item.label;
+              suggestionMap[label] = item;
+              var div = document.createElement('div');
+              div.classList.add('search-suggestion');
+              // Create image element: use provided image or placeholder
+              var img = document.createElement('img');
+              if (item.image) {
+                img.src = item.image;
+              } else {
+                // Use a small placeholder or leave blank
+                img.src = '';
+              }
+              img.alt = '';
+              // Span for label
+              var span = document.createElement('span');
+              span.textContent = label;
+              div.appendChild(img);
+              div.appendChild(span);
+              div.addEventListener('click', function(){
+                var url = `/products/${item.product_id}?highlight=${item.component_id}`;
+                window.location.href = url;
+              });
+              resultsContainer.appendChild(div);
+            });
+          })
+          .catch(function(err){
+            console.error('Errore durante il recupero dei suggerimenti di ricerca:', err);
+          });
+      });
+      searchForm.addEventListener('submit', function(e){
+        e.preventDefault();
+        var value = searchInput.value.trim();
+        if (value && suggestionMap[value]) {
+          var item = suggestionMap[value];
+          var url = `/products/${item.product_id}?highlight=${item.component_id}`;
+          window.location.href = url;
+        } else {
+          // If no exact match, but suggestions exist, redirect to the first suggestion
+          var keys = Object.keys(suggestionMap);
+          if (keys.length > 0) {
+            var first = suggestionMap[keys[0]];
+            var url2 = `/products/${first.product_id}?highlight=${first.component_id}`;
+            window.location.href = url2;
+          }
+        }
+      });
+      // Hide suggestions when clicking outside
+      document.addEventListener('click', function(ev){
+        if (!searchForm.contains(ev.target)) {
+          resultsContainer.style.display = 'none';
+        }
+      });
+    }
+  });
+  </script>
+</section>
+{% endblock %}

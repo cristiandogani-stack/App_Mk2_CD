@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+
+{#
+  Product-level inventory view.
+
+  This template lists all products defined in the system and, for each
+  product, displays a collapsible explosion of its component
+  structures.  The table headers mirror those used in the assembly
+  tree on the main warehouse dashboard: number, image, code, description,
+  category, quantity in stock and actions.  A tab bar at the top
+  provides navigation between the various warehouse views (assemblies,
+  parts, commercial items, products and the full archive) and
+  highlights the current section.
+
+  Each product is rendered inside a <details> element whose summary
+  shows the product name, optional image, description and a blank
+  quantity column.  When expanded, the product reveals its nested
+  component tree built from the rows_tree list passed by the
+  inventory blueprint.  The render_node macro recursively renders
+  each structure node along with its children.  For assemblies the
+  action column offers a link to the build assistant; for parts and
+  commercial items the link points to the production page to top up
+  stock.
+#}
+
+{% block title %}Magazzino – Prodotti{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button to return to the previous page.  Uses the referrer URL
+     if available, falling back to the warehouse index. #}
+  {# Always return to the inventory overview instead of relying on the HTTP referrer. #}
+  <a href="{{ url_for('inventory.index') }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: Prodotti</h2>
+  {# Tab navigation reused from other warehouse pages.  The new
+     "Prodotti" entry is highlighted when active_tab == 'products'. #}
+  {# Provide complete navigation across warehouse categories in the products explosion view.
+     This allows operators to jump between assemblies, parts, commercial items, products
+     and the history from this page. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory.list_assemblies') }}"
+       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+    <a href="{{ url_for('inventory.list_parts') }}"
+       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+    <a href="{{ url_for('inventory.list_commercial') }}"
+       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    {# Button linking to the production history page.  Replaces
+       "Archivio assiemi" with "Storico produzione".  When
+       ``active_tab`` equals ``'archive'`` this button is highlighted. #}
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+
+  {# Search bar to filter products and their component trees.  Typing in this input hides products whose name or component descriptions do not match the query. #}
+  <div style="margin-bottom:12px;">
+    <input type="text" id="product-search" class="input" placeholder="Cerca..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+  </div>
+
+  {% if product_trees|length == 0 %}
+    <p class="muted">Nessun prodotto definito.</p>
+  {% else %}
+    {# Table headers matching the component tree layout.  Include a revision
+       column for consistency with assemblies, parts and commercial lists. #}
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Categoria</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {# Macro to render a structure node and its children.  Based on
+         the macro used in the product detail page, this version
+         expects a row dictionary with fields ``number``, ``structure``,
+         ``component`` and ``children``.  The macro is defined once
+         outside the loop to avoid redefining it on each iteration. #}
+      {% macro render_node(node) %}
+        {#
+          Render a single structure node in the product tree.  Use the
+          component-node class so each row appears as a semi‑transparent
+          card like those in the parts and commercial lists.  Include
+          the revision column between description and category for
+          consistent alignment across all warehouse views.
+        #}
+        <details class="component-node" {% if not node.children %}data-leaf="true"{% endif %}>
+          <summary>
+            <div class="component-row">
+              <div class="col-number">{{ node.number }}</div>
+              <div class="col-image">
+                {# Prefer the component image; fall back to the structure image; otherwise a placeholder icon. #}
+                {% if node.component and node.component.image_filename %}
+                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + node.component.image_filename) }}" alt="{{ node.structure.name }}">
+                {% elif node.structure.image_filename %}
+                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + node.structure.image_filename) }}" alt="{{ node.structure.name }}">
+                {% else %}
+                  <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ node.structure.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                {% endif %}
+              </div>
+              <div class="col-code">{{ node.structure.name }}</div>
+              <div class="col-desc">{{ node.structure.description or '—' }}</div>
+              <div class="col-revision">{{ node.structure.revision_label }}</div>
+              <div class="col-category">
+                {% if node.structure.flag_assembly %}Assieme{% elif node.structure.flag_commercial %}Commerciale{% else %}Parte{% endif %}
+              </div>
+              <div class="col-qty">{{ (node.structure.quantity_in_stock or 0)|int }}</div>
+              <div class="col-actions">
+                {% if node.structure.flag_assembly %}
+                  {% set cq = node['complete_qty'] %}
+                  {% if cq and cq > 0 %}
+                    <span style="color:#10b981; font-weight:600; margin-right:6px;">🟢 {{ cq }}</span>
+                    <a href="{{ url_for('inventory.build_assembly', assembly_id=node.structure.id) }}" class="btn primary small">Costruisci</a>
+                  {% else %}
+                    <span class="muted" style="margin-right:6px;">&nbsp;</span>
+                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5;">Costruisci</a>
+                  {% endif %}
+                {% else %}
+                  <a href="{{ url_for('inventory.load_component', part_id=node.structure.id) }}" class="btn ghost small">Carica</a>
+                {% endif %}
+              </div>
+            </div>
+          </summary>
+          {% if node.children %}
+            <div class="children">
+              {% for child in node.children %}
+                {{ render_node(child) }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </details>
+      {% endmacro %}
+
+      {# Iterate over all products and render each with its explosion tree. #}
+        {% for item in product_trees %}
+        {% set product = item.product %}
+        {% set rows_tree = item.rows_tree %}
+        {#
+          Render the product as a top‑level component node.  Use the same
+          component-node class so the row matches the card appearance of
+          parts and commercial components.  Include the revision column for
+          completeness; when a product has no explicit revision_label use
+          a dash.
+        #}
+        <details class="component-node" open>
+          <summary>
+            <div class="component-row" style="font-weight:600;">
+              <div class="col-number">{{ loop.index }}</div>
+              <div class="col-image">
+                {# Display the product image or a placeholder icon if none exists. #}
+                {% if product.image_filename %}
+                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.image_filename) }}" alt="{{ product.name }}" style="max-width:40px; max-height:40px; object-fit:contain;">
+                {% else %}
+                  <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                {% endif %}
+              </div>
+              <div class="col-code">{{ product.name }}</div>
+              <div class="col-desc">{{ product.description or '—' }}</div>
+              <div class="col-revision">{{ product.revision_label or '—' }}</div>
+              <div class="col-category">Prodotto</div>
+              {# Show how many complete products can be built based on component stock.  When no units can be built display zero. #}
+              <div class="col-qty">{{ item.buildable_qty or 0 }}</div>
+              <div class="col-actions" style="display:flex; align-items:center; gap:6px;">
+                {# Display a green semaphore and an active build button when at least one unit can be assembled.  Otherwise show a red semaphore and a disabled button. #}
+                {#
+                  When at least one unit can be built show an active "Costruisci" button.  Instead of
+                  linking directly to the build page this button invokes a client‑side function
+                  that creates a reservation and corresponding production box for the product.  The
+                  reservation is made via the API with the boxType set to "ASSIEME" and the
+                  componentCode overridden to the product name.  On success the page navigates
+                  to the production box view where the guided build interface is shown.  When no
+                  units can be built the semaphore is red and the button is disabled.
+                #}
+                {% if item.buildable_qty and item.buildable_qty > 0 %}
+                  <span style="color:#10b981; font-weight:600;">
+                    🟢 {{ item.buildable_qty }}
+                  </span>
+                  <a href="javascript:void(0);" class="btn primary small"
+                     onclick='prenotaProdotto({{ product.id }}, {{ product.name|tojson }}, {{ item.buildable_qty or 0 }})'>Prenota</a>
+                {% else %}
+                  <span style="color:#ef4444; font-weight:600;">
+                    🔴 0
+                  </span>
+                  <button class="btn ghost small" disabled>Prenota</button>
+                {% endif %}
+              </div>
+            </div>
+          </summary>
+          <div class="children">
+            {% for node in rows_tree %}
+              {{ render_node(node) }}
+            {% endfor %}
+          </div>
+        </details>
+        {% endfor %}
+    </div>
+  {% endif %}
+
+  <script>
+  // Filter the list of products and their component trees based on the search query.
+  // Recursively searches each product node and its descendants for matches.
+  document.addEventListener('DOMContentLoaded', function(){
+    const input = document.getElementById('product-search');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      const productNodes = document.querySelectorAll('.component-tree > details.product-node');
+      productNodes.forEach(node => {
+        const match = filterDetail(node, query);
+        node.style.display = (match || query === '') ? '' : 'none';
+      });
+    });
+
+    function filterDetail(detailEl, query) {
+      let match = false;
+      // Check the text content of the product summary row
+      const summaryRow = detailEl.querySelector(':scope > summary .component-row');
+      if (summaryRow) {
+        const text = summaryRow.textContent.toLowerCase();
+        if (text.includes(query)) {
+          match = true;
+        }
+      }
+      // Recurse into children details to find matches in nested components
+      const childrenContainer = detailEl.querySelector(':scope > .children');
+      if (childrenContainer) {
+        const childDetails = Array.from(childrenContainer.children).filter(e => e.tagName.toLowerCase() === 'details');
+        let anyChildMatch = false;
+        childDetails.forEach(child => {
+          const childMatch = filterDetail(child, query);
+          if (childMatch) anyChildMatch = true;
+        });
+        match = match || anyChildMatch;
+      }
+      return match;
+    }
+  });
+  </script>
+
+  {#
+    Client‑side helper to reserve production boxes for finished products.
+    When the operator clicks the "Costruisci" button for a product this
+    function prompts for the number of units to build (bounded by the
+    maximum available from the server).  It then posts to the
+    ``/api/reservations`` endpoint with the boxType set to ``ASSIEME``
+    and the componentCode overridden to the product name.  On success
+    the browser navigates to the production box detail page to begin
+    the guided build procedure.  Errors are surfaced via alert dialogs.
+  #}
+  <script>
+function prenotaProdotto(productId, productName, maxQty) {
+    if (!maxQty || maxQty <= 0) {
+      alert('Nessuna unità prenotabile disponibile.');
+      return;
+    }
+    const qtyStr = prompt('Quantità da prenotare (max ' + maxQty + ')', '1');
+    if (qtyStr === null) return;
+    const qty = parseInt(qtyStr, 10);
+    if (!qty || qty <= 0 || qty > maxQty) {
+      alert('Quantità non valida.');
+      return;
+    }
+    fetch('/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: productId,
+        quantity: qty,
+        note: '',
+        boxType: 'PRODOTTO',
+        componentCode: productName
+      })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Errore nella creazione della prenotazione');
+        return res.json();
+      })
+      .then(data => {
+        const codes = (data.items || []).map(i => i.datamatrix).join(', ');
+        alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+        if (data.productionBoxId) {
+          window.location.href = '/inventory/production_box/' + data.productionBoxId;
+        }
+      })
+      .catch(err => {
+        alert('Si è verificato un errore: ' + err.message);
+        console.error(err);
+      });
+  }
+  </script>
+
+</section>
+{% endblock %}

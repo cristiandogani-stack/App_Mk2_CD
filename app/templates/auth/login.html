@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accedi - Argal</title>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="auth-body">
+  <div class="bg-aurora"></div>
+  <div class="login-wrap">
+    <div class="login-card glass">
+      <div class="login-brand">
+        {# Updated logo to the new PNG and ensure it maintains aspect ratio #}
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo lg">
+        <h1>Argal</h1>
+        <p class="subtitle">Area riservata</p>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field">
+          <span>Email</span>
+          <input type="email" name="email" required autocomplete="username" placeholder="nome@azienda.it">
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="remember">
+          <span>Ricordami</span>
+        </label>
+        <button class="btn primary full">Accedi</button>
+      </form>
+      <p class="legal">Protezione attiva. Accesso consentito solo al personale autorizzato.</p>
+    </div>
+  </div>
+</body>
+</html>

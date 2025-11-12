@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Modifica tipo struttura – Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Modifica tipo struttura</h2>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Nome</span>
+      <input name="name" required value="{{ type.name }}">
+    </label>
+    <label class="field">
+      <span>Descrizione</span>
+      <textarea name="description" rows="3">{{ type.description }}</textarea>
+    </label>
+    {# Removed typology radio group.  Editing a structure type no longer allows changing its typology flags.
+       Existing values will remain unchanged on submission. #}
+    {# Removed the "Definisci" link.  Editing a structure type no longer exposes a separate
+       page for defining default attributes; changes to defaults should be managed
+       elsewhere if needed. #}
+    <div class="form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn primary" type="submit">Salva</button>
+      <a class="btn ghost" href="{{ url_for('admin.structures') }}">Annulla</a>
+      {# Delete button: navigate to confirmation page to delete the entire type and its nodes #}
+      <a class="btn danger" href="{{ url_for('admin.delete_structure_type', type_id=type.id) }}">Elimina</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

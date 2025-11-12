@@ -1,0 +1,1207 @@
+{% extends 'base.html' %}
+
+{#
+  Dedicated view for displaying and editing a single product component.
+
+  Variables provided by the route:
+    product   – the parent Product instance
+    component – the ProductComponent instance being viewed/edited
+    category  – one of 'assembly', 'part' or 'commercial'
+    suppliers – list of Supplier objects for selects
+    work_centers – list of WorkCenter objects for selects
+    work_phases – list of WorkPhase objects for selects
+
+  For assemblies no fields are editable; the page simply shows basic
+  information.  For parts and commercial components the form fields mirror
+  those available in the inline editing table but arranged vertically for
+  better usability on small screens (e.g. iPhone).
+#}
+
+{#
+  Use the display_name property for the page title so that the revision
+  suffix (_Rev.X) appears in the browser tab.  Without this change the
+  page title would omit the revision even though it is shown in the
+  header.  Fall back to the raw structure name when display_name is
+  unavailable.
+#}
+{#
+  Use only the raw structure name for the page title.  The revision suffix
+  should not appear in the browser tab; it is displayed separately via the
+  badge.  The component name must remain unchanged even after
+  revisions.  Always include the product name in the title for context.
+ #}
+{% block title %}{{ component.structure.name }} – {{ product.name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="content-wrapper" style="max-width:800px;margin:0 auto; position:relative;">
+    {# Display the current revision in a badge at the top right of the component
+       detail page.  When a revision is set the badge appears with a
+       prominent border and background.  If no revision exists nothing is
+       displayed.  The content-wrapper is positioned relative so the
+       absolute positioning of the badge works correctly. #}
+    {% if component.structure.revision_label %}
+    <div class="revision-badge" style="position:absolute; top:0; right:0; padding:6px 10px; border:2px solid var(--glass-stroke); border-radius:8px; background: var(--card); font-weight:600;">
+      {{ component.structure.revision_label }}
+    </div>
+    {% endif %}
+    {# Show only the raw component code (structure name) as the heading.  Do not
+       append the revision suffix here; the badge conveys the revision. #}
+    <h2 class="section-title" style="text-align:center;">{{ component.structure.name }}</h2>
+    <p class="section-subtitle" style="text-align:center;">{{ component.description or component.notes_plain or component.structure.type.description or component.structure.type.name }}</p>
+    {# Display image and document upload form side by side.  The document form is shown
+       when editing a real product or defining defaults (definition_mode passed in
+       context).  Otherwise only the image card is shown. #}
+    {% set show_docs = definition_mode or component.created_at %}
+    <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:20px; margin:20px 0;">
+      <div class="card glass" style="width:200px; height:200px; display:flex; align-items:center; justify-content:center; cursor:pointer;"
+           onclick="var input=document.getElementById('image-upload'); if(input){ input.click(); }">
+        {# Prefer the component's own image if present; otherwise fall back to the
+           master image when available.  When neither exists, show a placeholder. #}
+        {% if component.image_filename %}
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + component.image_filename) }}" alt="{{ component.structure.name }}" style="max-width:100%; max-height:100%;">
+        {% elif master_image_filename %}
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + master_image_filename) }}" alt="{{ component.structure.name }}" style="max-width:100%; max-height:100%;">
+        {% else %}
+          <!-- When neither component nor master image exists, display a default placeholder -->
+          <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ component.structure.name }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+        {% endif %}
+      </div>
+      {# For assemblies, document uploads are now integrated into the main form below.  The
+         dedicated document upload form (with its own save/back buttons) has been
+         removed to avoid duplicate actions.  For parts and commercial components
+         document inputs remain integrated into their respective forms. #}
+    </div>
+    {#
+      Display a list of previously uploaded documents.  The back‑end
+      populates the `existing_documents` dictionary keyed by folder
+      identifier (e.g. "qualita") with lists of files.  Each list entry
+      contains a "name" (file name) and a relative "path" within the
+      static folder.  A corresponding `doc_label_map` provides
+      human‑friendly labels for each folder.  Only categories with
+      uploaded files are shown.  This section is placed outside the
+      upload form so it is always visible, even when the document
+      upload form itself is hidden (e.g. assembly view‑only mode).
+    #}
+    <div class="glass" style="padding:12px; margin-top:10px;">
+      <h4 style="margin:0 0 6px 0;">Documenti caricati</h4>
+      {# Use a namespace to count the total number of files across all folders.  This
+         allows us to determine whether any documents exist. #}
+      {% set ns = namespace(count=0) %}
+      {% for folder, files in existing_documents.items() %}
+        {% set ns.count = ns.count + (files|length) %}
+      {% endfor %}
+      {% if ns.count > 0 %}
+        {% for folder, files in existing_documents.items() %}
+          {% if files|length > 0 %}
+          <div class="doc-category" style="margin-bottom:8px;">
+            <strong>{{ doc_label_map.get(folder, folder) }}:</strong>
+            <ul style="margin:4px 0 0 12px; padding:0; list-style:disc;">
+              {% for file in files %}
+                {# Use the download endpoint to force saving the file.  The download
+                   attribute ensures the browser treats the link as a downloadable
+                   resource. #}
+                <li style="margin-left:1em; display:flex; align-items:center; gap:4px;">
+                  {# Checklist toggle for each uploaded document.  Allows operators to
+                     include this file in the build/load procedures.  The checkbox
+                     stores the structure id and the relative document path so
+                     the flag can be toggled asynchronously via fetch.  When
+                     flagged_docs is provided by the view the checkbox is
+                     preselected accordingly. #}
+                  {# Render the checklist control as a toggle switch.  Assign the
+                     ARIA role `switch` so assistive technologies treat it as
+                     a binary toggle rather than a traditional checkbox. #}
+                  {# Lowercase filename and base name for flexible matching.  The base name removes
+                     the file extension and any ``_compiled_`` suffix.  Check both the stored
+                     document paths and the file names to decide whether the toggle should be active. #}
+                  {% set fn_lower = file.name|lower %}
+                  {% set base_lower = fn_lower.rsplit('.', 1)[0].split('_compiled_')[0] %}
+                  <input type="checkbox" role="switch" class="checklist-toggle" data-structure-id="{{ component.structure.id }}" data-doc-path="{{ file.path }}"
+                         {#
+                           Determine whether the toggle should be preselected.  A document is
+                           considered flagged when either the full stored path matches one of
+                           the entries in the checklist (flagged_docs), or its filename or
+                           base filename (without extension and any `_compiled_` suffix)
+                           matches an entry in the derived filename/base name sets.  These
+                           auxiliary sets (flagged_filenames and flagged_basenames) are
+                           provided by the view and contain lower‑case values.  Convert
+                           the current file's name and base name to lower case before
+                           checking membership.
+                         #}
+                         {% if (
+                           (flagged_docs is defined and flagged_docs and file.path in flagged_docs)
+                           or (flagged_filenames is defined and fn_lower in flagged_filenames)
+                           or (flagged_basenames is defined and base_lower in flagged_basenames)
+                         ) %}checked{% endif %}>
+                  <label style="font-size:12px;">
+                    Check list
+                    {# Show a green check mark when this file is included in the checklist.
+                       A match occurs when the full path is flagged or when the filename
+                       or its base form appears in the flagged filename/base name sets.
+                    #}
+                    {% if (
+                      (flagged_docs is defined and flagged_docs and file.path in flagged_docs)
+                      or (flagged_filenames is defined and fn_lower in flagged_filenames)
+                      or (flagged_basenames is defined and base_lower in flagged_basenames)
+                    ) %}<span style="color:green; font-size:14px; margin-left:4px;">✔</span>{% endif %}
+                  </label>
+                  <a href="{{ url_for('products.download_file', filename=file.path) }}" download>{{ file.name }}</a>
+                  {# Always display a delete button for uploaded documents.  Previously
+                     the delete button was shown only for files stored under the
+                     'documents/' path, leaving default documents undeletable.  To
+                     allow operators to remove any document (including those
+                     attached to parts, assemblies or commercial components),
+                     remove the condition and render the deletion form for all
+                     files. #}
+                  <form method="post" action="{{ url_for('products.delete_document') }}" style="display:inline; margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="filepath" value="{{ file.path }}">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit" class="btn ghost small" style="padding:0 4px; font-size:12px;" onclick="return confirm('Sei sicuro di voler eliminare questo documento?');">✖</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <p class="muted" style="margin:0;">Nessun documento caricato.</p>
+      {% endif %}
+    </div>
+    {# Show creation and modification dates only when available (e.g. for real product components).
+       For administrative default‑definition pages the component may not have these attributes.
+    #}
+    {% if component.created_at %}
+    <p class="muted" style="text-align:center;">
+      Data creazione: {{ component.created_at.strftime('%d/%m/%Y %H:%M') }}<br>
+      Ultima modifica: {{ component.updated_at.strftime('%d/%m/%Y %H:%M') }}
+    </p>
+    {% endif %}
+    {% if category == 'assembly' %}
+      <form method="post" class="form" enctype="multipart/form-data" style="margin-top:16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# Hidden file input to allow image uploads for assemblies.  This input is referenced by the image
+           card's onclick handler via document.getElementById('image-upload'), enabling the user to select a
+           photo when editing an assembly.  Without this element the click handler would do nothing,
+           preventing image selection. #}
+        <input type="file" id="image-upload" name="image" accept="image/*" style="display:none;">
+        {# Assemblies: display quantity, description and total weight of parts.  Quantity can be edited even when defining defaults. #}
+        <label class="field"><span>Quantità</span>
+          <input type="number" step="1" min="1" name="quantity" value="{{ component.quantity or 1 }}">
+        </label>
+        <label class="field"><span>Descrizione</span>
+          {# Allow editing the description for assemblies.  Use an input so the description
+             can be modified like other attributes.  Prefill the value from the component
+             when present; otherwise leave blank. #}
+          <input type="text" name="description" value="{{ component.description or component.notes_plain or '' }}">
+        </label>
+        <label class="field"><span>Peso parti (kg)</span>
+          <input type="text" readonly
+                 value="{% if parts_weight is not none %}{{ parts_weight|round(3) }}{% elif component.weight and component.quantity %}{{ (component.weight * component.quantity)|round(3) }}{% elif component.weight %}{{ component.weight|round(3) }}{% else %}{% endif %}">
+        </label>
+        {# Inventory management fields for assemblies: show only in definition mode so
+           product-level editing pages remain unchanged.  These fields allow
+           administrators to define the minimum stock level and the amount to
+           replenish when the threshold is reached. #}
+        {% if definition_mode %}
+        <label class="field"><span>Soglia Magazzino</span>
+          <input type="number" step="0.01" name="stock_threshold" value="{{ component.stock_threshold|round(2) if component.stock_threshold is not none else '' }}">
+        </label>
+        <label class="field"><span>Quantità di rifornimento</span>
+          <input type="number" step="0.01" name="replenishment_qty" value="{{ component.replenishment_qty|round(2) if component.replenishment_qty is not none else '' }}">
+        </label>
+        {% endif %}
+        {# Flags for assemblies: place below the fields and above the action buttons. #}
+        <div class="flags-container" style="display:flex; gap:20px; flex-wrap:wrap; margin-top:8px;">
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="is_sellable" {% if component.is_sellable %}checked{% endif %}>
+            <span style="margin-left:4px;">Vendibile</span>
+          </label>
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="guiding_part" {% if component.guiding_part %}checked{% endif %}>
+            <span style="margin-left:4px;" title="Assegna un unico Data Matrix per il componente e i suoi figli">Parte guida</span>
+          </label>
+        </div>
+        {# When multiple revisions exist, allow selecting which prior versions this
+           assembly is compatible with.  This block has been disabled in its
+           original position because we now render it near the revision controls
+           to avoid duplicate "Compatibile con:" sections. #}
+        {% if False and component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {% if letter == component.structure.revision_label %}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {# Note: removed duplicate compatibility selection block for assemblies.  See above for the single block. #}
+        {# Document upload fields for assemblies.  These are displayed when
+           show_docs is True.  They allow uploading multiple files for each
+           document category. #}
+        {% if show_docs %}
+        <div class="document-upload" style="padding:12px; border:1px dashed var(--glass-stroke); border-radius:12px; margin-top:10px;">
+          <h4 style="margin:0 0 6px 0;">Documenti</h4>
+          <label class="field"><span>Modulo Cert. qualità</span><input type="file" name="ass_qualita" multiple></label>
+          <label class="field"><span>Step/tavola</span><input type="file" name="ass_step_tavole" multiple></label>
+          <label class="field"><span>Verifica funzionamento</span><input type="file" name="ass_funzionamento" multiple></label>
+          <label class="field"><span>Montaggio istruzioni</span><input type="file" name="ass_istruzioni" multiple></label>
+          <label class="field"><span>Altro</span><input type="file" name="ass_altro" multiple></label>
+        </div>
+        {% endif %}
+        {# Render the assembly compatibility selection near the bottom of the form, just before the
+           save button.  This ensures only a single "Compatibile con:" section appears on the
+           page and places it close to the revision controls for better ergonomics. #}
+        {% if component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {% if letter == component.structure.revision_label %}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button class="btn primary" type="submit">Salva</button>
+          {# Back button: return to return_to when provided, otherwise use history.back() #}
+          {% if return_to %}
+          <a class="btn ghost" href="{{ return_to }}">Indietro</a>
+          {% else %}
+          {#
+            Use a custom handler to navigate back to the referring page and force
+            a fresh load.  Refer to document.referrer so the previous URL is
+            explicitly requested from the server rather than using the browser
+            history cache.  If no referrer exists, fall back to history.back().
+          #}
+          <a class="btn ghost" href="#"
+             onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">Indietro</a>
+          {% endif %}
+        </div>
+      </form>
+      {# Revision controls: separate form outside of the save form to avoid nested forms.
+         Displays a Revisiona button and, when prior revisions exist, a multi‑select
+         for choosing compatible versions.  The multi‑select is contained within
+         the revision form so selections are submitted alongside the revision action. #}
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <form method="post" action="{{ url_for('products.revise_structure', structure_id=component.structure.id) }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="btn secondary" type="submit" onclick="return confirm('Attenzione: la procedura di revisione è irreversibile.');">Revisiona</button>
+          {% if False and component.structure.revision_letters %}
+          <div class="field" style="display:flex; flex-direction:column;">
+            <span>Compatibile con:</span>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {% for letter in component.structure.revision_letters %}
+              <label style="display:flex; align-items:center; gap:4px;">
+                {% if letter == component.structure.revision_label %}
+                {# Display the current revision as disabled, and submit via a hidden field #}
+                <input type="checkbox" value="{{ letter }}" checked disabled>
+                <input type="hidden" name="current_revision" value="{{ letter }}">
+                {% else %}
+                <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+                {% endif %}
+                <span>{{ letter }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </form>
+      </div>
+    {% elif category == 'part' %}
+      <form method="post" class="form" enctype="multipart/form-data" style="margin-top:16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" id="image-upload" name="image" accept="image/*" style="display:none;">
+        {# Top-level fields: weight, cost, description and notes.  Use hours/days conversions and rounding. #}
+        {# Quantity for part components: allow overriding the quantity associated with this component. #}
+        <label class="field"><span>Quantità</span><input type="number" step="1" min="1" name="quantity" value="{{ component.quantity or 1 }}"></label>
+        <label class="field"><span>Peso (kg)</span><input type="number" step="0.001" name="weight" value="{{ component.weight|round(3) if component.weight is not none else '' }}"></label>
+        <label class="field"><span>Costo (€/pz)</span>
+          {# Display the aggregated processing cost if available.  The back‑end stores
+             the total cost for all internal cycles in component.processing_cost.  #}
+          {% if component.processing_cost is not none %}
+            <input type="number" step="0.01" name="processing_cost" class="overall-processing-cost" readonly value="{{ component.processing_cost|round(2) }}">
+          {% else %}
+            <input type="number" step="0.01" name="processing_cost" class="overall-processing-cost" readonly value="">
+          {% endif %}
+        </label>
+        <label class="field"><span>Descrizione</span><input type="text" name="description" value="{{ component.description or component.notes_plain or '' }}"></label>
+        <label class="field"><span>Note</span><input type="text" name="notes" value="{{ notes_value or '' }}"></label>
+        {# Inventory management fields for parts: show only in definition mode.  These fields
+           let administrators specify the stock threshold and replenishment quantity for
+           the component.  When definition_mode is false (product-level editing), these
+           inputs are hidden to avoid unsupported updates. #}
+        {% if definition_mode %}
+        <label class="field"><span>Soglia Magazzino</span>
+          <input type="number" step="0.01" name="stock_threshold" value="{{ component.stock_threshold|round(2) if component.stock_threshold is not none else '' }}">
+        </label>
+        <label class="field"><span>Quantità di rifornimento</span>
+          <input type="number" step="0.01" name="replenishment_qty" value="{{ component.replenishment_qty|round(2) if component.replenishment_qty is not none else '' }}">
+        </label>
+        {% endif %}
+        {# Toggle flags below notes: sellable and guiding part #}
+        <div class="flags-container" style="display:flex; gap:20px; flex-wrap:wrap; margin-top:8px;">
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="is_sellable" {% if component.is_sellable %}checked{% endif %}>
+            <span style="margin-left:4px;">Vendibile</span>
+          </label>
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="guiding_part" {% if component.guiding_part %}checked{% endif %}>
+            <span style="margin-left:4px;" title="Assegna un unico Data Matrix per il componente e i suoi figli">Parte guida</span>
+          </label>
+        </div>
+
+        {# Compatibility selection for part components.
+           When multiple revisions exist on the underlying structure, allow
+           the user to specify which prior revisions remain compatible with
+           the current one.  This block mirrors the behaviour used for
+           assemblies and commercial components.  The current revision
+           checkbox is always selected and disabled to prevent deselection.
+           Other checkboxes reflect the existing compatibility list.  When
+           this block is present in the form, the submitted values are
+           processed in the component_detail view to update
+           struct.compatible_revisions accordingly. #}
+{% if False and component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {% if letter == component.structure.revision_label %}
+              {# Always preselect the current revision and prevent toggling.  A hidden
+                 input is included so the value is submitted even when the
+                 checkbox is disabled. #}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {# When defining defaults or editing a real component, include document upload inputs for parts
+           directly within the main form.  These inputs mirror the fields available in the top‑right form,
+           but are placed here to allow saving documents together with other fields. #}
+        {% if show_docs %}
+        <div class="document-upload" style="padding:12px; border:1px dashed var(--glass-stroke); border-radius:12px; margin-top:10px;">
+          <h4 style="margin:0 0 6px 0;">Documenti</h4>
+          <label class="field"><span>Modulo Cert. qualità</span><input type="file" name="part_qualita" multiple></label>
+          <label class="field"><span>3.1 Materiale</span><input type="file" name="part_3_1_materiale" multiple></label>
+          <label class="field"><span>Step/tavola</span><input type="file" name="part_step_tavole" multiple></label>
+          <label class="field"><span>Altro</span><input type="file" name="part_altro" multiple></label>
+        </div>
+        {% endif %}
+
+        <div class="work-phase-section" style="margin-top:20px;">
+          <h4 style="margin:0 0 4px 0;">Cicli di lavorazione</h4>
+          <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+            <button type="button" class="btn secondary small add-phase">+</button>
+          </div>
+          <div id="phase-container">
+            <div class="phase-row" style="padding:8px; background: var(--card); border:1px solid var(--glass-stroke); border-radius:8px; margin-bottom:8px; position:relative;">
+              <button type="button" class="btn ghost small remove-phase" style="position:absolute; top:4px; right:4px; color:#dc2626; border-color:#dc2626; display:none;">✕</button>
+              <div class="phase-top" style="display:flex; flex-wrap:wrap; gap:12px;">
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:40px;">
+                  <label style="font-size:12px;">#</label>
+                  <span class="phase-count">1</span>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Fase</label>
+                  <select class="phase-select" name="work_phase_id">
+                    <option value="">—</option>
+                    {% for wp in work_phases %}
+                      <option value="{{ wp.id }}" {% if component.work_phase_id == wp.id %}selected{% endif %}>{{ wp.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:140px;">
+                  <label style="font-size:12px;">Tipo di lavorazione</label>
+                  <select class="processing-type-select" name="processing_type">
+                    <option value="">—</option>
+                    <option value="internal" {% if component.processing_type == 'internal' %}selected{% endif %}>Interna</option>
+                    <option value="external" {% if component.processing_type == 'external' %}selected{% endif %}>Esterna</option>
+                  </select>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Fornitore</label>
+                  <select class="supplier-select" name="supplier_id">
+                    <option value="">—</option>
+                    {% for s in suppliers %}
+                      <option value="{{ s.id }}" {% if component.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="phase-bottom" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:8px;">
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Centro di lavorazione</label>
+                  <select class="work-center-select" name="work_center_id">
+                    <option value="" data-hourly-cost="">—</option>
+                    {% for c in work_centers %}
+                      <option value="{{ c.id }}" data-hourly-cost="{{ c.hourly_cost }}" {% if component.work_center_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Tempo std (ore)</label>
+                  <input class="standard-time-input" name="standard_time" type="number" step="0.01" value="{{ (component.standard_time / 60.0)|round(2) if component.standard_time is not none else '' }}">
+                </div>
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Costo lavorazione (€/pz)</label>
+                  {% if component.processing_type == 'internal' and component.standard_time is not none and component.work_center and component.work_center.hourly_cost is not none %}
+                    {% set std_hours = (component.standard_time / 60.0) %}
+                    <input class="processing-cost-input" type="number" step="0.01" value="{{ (std_hours * component.work_center.hourly_cost)|round(2) }}" readonly>
+                  {% else %}
+                    <input class="processing-cost-input" type="number" step="0.01" value="" readonly>
+                  {% endif %}
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Lead time teorico (gg)</label>
+                  <input class="lead-time-theoretical-input" name="lead_time_theoretical" type="number" step="0.01" value="{{ (component.lead_time_theoretical / 1440.0)|round(2) if component.lead_time_theoretical is not none else '' }}">
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Lead time reale (gg)</label>
+                  <input class="lead-time-real-input" name="lead_time_real" type="number" step="0.01" value="{{ (component.lead_time_real / 1440.0)|round(2) if component.lead_time_real is not none else '' }}">
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Codice fornitore</label>
+                  {# When editing a part and the base processing type is external, prefill the supplier identifier from
+                     ``component.supplier_id``.  For internal processes leave blank.  This field is used to enter
+                     supplier codes for external processing cycles.  #}
+                  {% if component.processing_type == 'external' and component.supplier_id is not none %}
+                  <input class="supplier-code-input" type="text" value="{{ component.supplier_id }}">
+                  {% else %}
+                  <input class="supplier-code-input" type="text" value="">
+                  {% endif %}
+                </div>
+                {# External processing cost: allow entering a cost per piece for external processes. #}
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Costo lavorazione (€/pz)</label>
+                  {# For the base row (component) when processing is external, no default cost is set; user can enter one. #}
+                  <input class="processing-cost-input external-cost-input" type="number" step="0.01" value="">
+                </div>
+              </div>
+            </div>
+            {# Render additional saved cycles (if any) #}
+            {% for cycle in additional_cycles %}
+            <div class="phase-row" style="padding:8px; background: var(--card); border:1px solid var(--glass-stroke); border-radius:8px; margin-bottom:8px; position:relative;">
+              <button type="button" class="btn ghost small remove-phase" style="position:absolute; top:4px; right:4px; color:#dc2626; border-color:#dc2626;">✕</button>
+              <div class="phase-top" style="display:flex; flex-wrap:wrap; gap:12px;">
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:40px;">
+                  <label style="font-size:12px;">#</label>
+                  <span class="phase-count"></span>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Fase</label>
+                  <select class="phase-select" name="work_phase_id">
+                    <option value="">—</option>
+                    {% for wp in work_phases %}
+                      <option value="{{ wp.id }}" {% if cycle.work_phase_id and (cycle.work_phase_id|string) == (wp.id|string) %}selected{% endif %}>{{ wp.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:140px;">
+                  <label style="font-size:12px;">Tipo di lavorazione</label>
+                  <select class="processing-type-select" name="processing_type">
+                    <option value="">—</option>
+                    <option value="internal" {% if cycle.processing_type == 'internal' %}selected{% endif %}>Interna</option>
+                    <option value="external" {% if cycle.processing_type == 'external' %}selected{% endif %}>Esterna</option>
+                  </select>
+                </div>
+                <div class="phase-field" style="display:flex; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Fornitore</label>
+                  <select class="supplier-select" name="supplier_id">
+                    <option value="">—</option>
+                    {% for s in suppliers %}
+                      <option value="{{ s.id }}" {% if cycle.supplier_id and (cycle.supplier_id|string) == (s.id|string) %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="phase-bottom" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:8px;">
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Centro di lavorazione</label>
+                  <select class="work-center-select" name="work_center_id">
+                    <option value="" data-hourly-cost="">—</option>
+                    {% for c in work_centers %}
+                      <option value="{{ c.id }}" data-hourly-cost="{{ c.hourly_cost }}" {% if cycle.work_center_id and (cycle.work_center_id|string) == (c.id|string) %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Tempo std (ore)</label>
+                  <input class="standard-time-input" name="standard_time" type="number" step="0.01" value="{{ cycle.standard_time }}">
+                </div>
+                <div class="phase-field internal-field" style="display:flex; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Costo lavorazione (€/pz)</label>
+                  {% if cycle.processing_type == 'internal' and cycle.standard_time and cycle.work_center_id %}
+                    {% set std_hours = cycle.standard_time|float %}
+                    {% set wc = (work_centers|selectattr('id','equalto', cycle.work_center_id|int)|first) %}
+                    {% if wc and wc.hourly_cost is not none %}
+                      <input class="processing-cost-input" type="number" step="0.01" value="{{ (std_hours * wc.hourly_cost)|round(2) }}" readonly>
+                    {% else %}
+                      <input class="processing-cost-input" type="number" step="0.01" value="" readonly>
+                    {% endif %}
+                  {% else %}
+                    <input class="processing-cost-input" type="number" step="0.01" value="" readonly>
+                  {% endif %}
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Lead time teorico (gg)</label>
+                  <input class="lead-time-theoretical-input" name="lead_time_theoretical" type="number" step="0.01" value="{{ cycle.lead_time_theoretical }}">
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Lead time reale (gg)</label>
+                  <input class="lead-time-real-input" name="lead_time_real" type="number" step="0.01" value="{{ cycle.lead_time_real }}">
+                </div>
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:150px;">
+                  <label style="font-size:12px;">Codice fornitore</label>
+                  {# Prefill the supplier identifier for this additional cycle.  For external cycles store the
+                     supplier id or code so that it can be restored on subsequent edits.  #}
+                  <input class="supplier-code-input" type="text" value="{{ cycle.supplier_id if cycle.supplier_id is not none else '' }}">
+                </div>
+                {# External processing cost: allow entering a cost per piece for external cycles. #}
+                <div class="phase-field external-field" style="display:none; flex-direction:column; min-width:130px;">
+                  <label style="font-size:12px;">Costo lavorazione (€/pz)</label>
+                  {% if cycle.processing_type == 'external' %}
+                    <input class="processing-cost-input external-cost-input" type="number" step="0.01" value="{{ cycle.processing_cost if cycle.processing_cost is not none else '' }}">
+                  {% elif cycle.processing_type == 'internal' %}
+                    {# For internal additional cycles the cost is computed and displayed in the internal field. #}
+                    <input class="processing-cost-input external-cost-input" type="number" step="0.01" value="" readonly>
+                  {% else %}
+                    <input class="processing-cost-input external-cost-input" type="number" step="0.01" value="">
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {# Render the part compatibility selection near the bottom of the form, before the save button. #}
+        {% if component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {% if letter == component.structure.revision_label %}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-start;">
+          <input type="hidden" name="cycles_json" class="cycles-json-input">
+          <button class="btn primary" type="submit">Salva</button>
+          {# Back link: return to return_to when supplied, else fallback to history.back() #}
+          {% if return_to %}
+          <a class="btn ghost" href="{{ return_to }}">Indietro</a>
+          {% else %}
+          {#
+            Use a custom handler to navigate back to the referring page and force
+            a fresh load.  Refer to document.referrer so the previous URL is
+            explicitly requested from the server rather than using the browser
+            history cache.  If no referrer exists, fall back to history.back().
+          #}
+          <a class="btn ghost" href="#"
+             onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">Indietro</a>
+          {% endif %}
+        </div>
+      </form>
+      {# Revision controls for parts: separate form outside the save form.  Provides a
+         Revisiona button and a multi‑select to choose compatible revisions when
+         previous versions exist. #}
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <form method="post" action="{{ url_for('products.revise_structure', structure_id=component.structure.id) }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+<button class="btn secondary" type="submit" onclick="return confirm('Attenzione: la procedura di revisione è irreversibile.');">Revisiona</button>
+          {% if False and component.structure.revision_letters %}
+          <div class="field" style="display:flex; flex-direction:column;">
+            <span>Compatibile con:</span>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {% for letter in component.structure.revision_letters %}
+              <label style="display:flex; align-items:center; gap:4px;">
+                {# For revision controls on parts, the current revision must always be selected and non‑deselectable.
+                   Use an onclick handler to prevent toggling while still submitting the value.  Other revisions
+                   remain selectable based on existing compatibility. #}
+                {% if letter == component.structure.revision_label %}
+                <input type="checkbox" value="{{ letter }}" checked disabled>
+                <input type="hidden" name="current_revision" value="{{ letter }}">
+                {% else %}
+                <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+                {% endif %}
+                <span>{{ letter }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </form>
+      </div>
+    {% else %}
+      <form method="post" class="form" enctype="multipart/form-data" style="margin-top:16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" id="image-upload" name="image" accept="image/*" style="display:none;">
+        {# No inline document upload fields for commercial parts; handled by top‑right form. #}
+        <label class="field"><span>Fornitore</span>
+          <select name="supplier_id">
+            <option value="">—</option>
+            {% for s in suppliers %}
+              <option value="{{ s.id }}" {% if component.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {# Quantity for commercial components: allow editing the quantity associated with this component. #}
+        <label class="field"><span>Quantità</span><input type="number" step="1" min="1" name="quantity" value="{{ component.quantity or 1 }}"></label>
+        <label class="field"><span>Peso (kg)</span><input type="number" step="0.0001" name="weight" value="{{ component.weight or '' }}"></label>
+        <label class="field"><span>Prezzo unitario (€/pz)</span><input type="number" step="0.01" name="price_per_unit" value="{{ component.price_per_unit or '' }}"></label>
+        <label class="field"><span>Descrizione</span><input type="text" name="description" value="{{ component.description or component.notes_plain or '' }}"></label>
+        <label class="field"><span>Lotto minimo</span><input type="number" step="1" name="minimum_order_qty" value="{{ component.minimum_order_qty or '' }}"></label>
+        <label class="field"><span>Lead time teorico (minuti)</span><input type="number" step="0.01" name="lead_time_theoretical" value="{{ component.lead_time_theoretical or '' }}"></label>
+        <label class="field"><span>Lead time reale (minuti)</span><input type="number" step="0.01" name="lead_time_real" value="{{ component.lead_time_real or '' }}"></label>
+        <label class="field"><span>Note</span><input type="text" name="notes" value="{{ notes_value or '' }}"></label>
+        {# Inventory management fields for commercial components: show only in
+           definition mode.  These fields allow administrators to specify
+           the minimum stock level (threshold) that triggers a replenishment
+           and the quantity to order when replenishing.  When
+           definition_mode is false (product-level editing), these inputs
+           remain hidden to avoid unsupported updates.  Align the behaviour
+           with parts and assemblies for consistency across categories. #}
+        {% if definition_mode %}
+        <label class="field"><span>Soglia Magazzino</span>
+          <input type="number" step="0.01" name="stock_threshold" value="{{ component.stock_threshold|round(2) if component.stock_threshold is not none else '' }}">
+        </label>
+        <label class="field"><span>Quantità di rifornimento</span>
+          <input type="number" step="0.01" name="replenishment_qty" value="{{ component.replenishment_qty|round(2) if component.replenishment_qty is not none else '' }}">
+        </label>
+        {% endif %}
+        {# Toggle flags below notes: sellable and guiding part for commercial components #}
+        <div class="flags-container" style="display:flex; gap:20px; flex-wrap:wrap; margin-top:8px;">
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="is_sellable" {% if component.is_sellable %}checked{% endif %}>
+            <span style="margin-left:4px;">Vendibile</span>
+          </label>
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="guiding_part" {% if component.guiding_part %}checked{% endif %}>
+            <span style="margin-left:4px;" title="Assegna un unico Data Matrix per il componente e i suoi figli">Parte guida</span>
+          </label>
+          <label class="field" style="display:flex; align-items:center;">
+            <input type="checkbox" name="lot_management" {% if lot_management %}checked{% endif %}>
+            <span style="margin-left:4px;">Gestione a lotti</span>
+          </label>
+        </div>
+        {# When multiple revisions exist, allow selecting which prior versions this
+           commercial component is compatible with.  This multi‑select lists
+           every revision label from Rev.A up to the current revision.
+           Users can select one or more entries to indicate compatibility.
+           The selection is sent via the ``compatible_revisions`` form field.
+           The select is omitted when no revisions exist. #}
+        {% if False and component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {# Ensure the current revision is always selected and not deselectable when editing commercial components.
+                 Use an onclick handler to disable toggling on the latest revision.  Other revisions are selected
+                 based on the structure's compatible revisions list. #}
+              {% if letter == component.structure.revision_label %}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if show_docs %}
+        <div class="document-upload" style="padding:12px; border:1px dashed var(--glass-stroke); border-radius:12px; margin-top:10px;">
+          <h4 style="margin:0 0 6px 0;">Documenti</h4>
+          <label class="field"><span>Modulo Cert. qualità</span><input type="file" name="comm_qualita" multiple></label>
+          <label class="field"><span>DDT fornitore</span><input type="file" name="comm_ddt_fornitore" multiple></label>
+          <label class="field"><span>Step/tavola</span><input type="file" name="comm_step_tavole" multiple></label>
+          <label class="field"><span>3.1 Materiale</span><input type="file" name="comm_3_1_materiale" multiple></label>
+          <label class="field"><span>Altro</span><input type="file" name="comm_altro" multiple></label>
+        </div>
+        {% endif %}
+        {# Render the commercial compatibility selection near the bottom of the form, before the save button. #}
+        {% if component.structure.revision_letters %}
+        <div class="field" style="margin-top:8px;">
+          <span>Compatibile con:</span>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for letter in component.structure.revision_letters %}
+            <label style="display:flex; align-items:center; gap:4px;">
+              {% if letter == component.structure.revision_label %}
+              <input type="checkbox" value="{{ letter }}" checked disabled>
+              <input type="hidden" name="current_revision" value="{{ letter }}">
+              {% else %}
+              <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+              {% endif %}
+              <span>{{ letter }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button class="btn primary" type="submit">Salva</button>
+          {# Back link for commercial components: redirect to return_to if present; otherwise rely on history.back(). #}
+          {% if return_to %}
+          <a class="btn ghost" href="{{ return_to }}">Indietro</a>
+          {% else %}
+          {#
+            Use a custom handler to navigate back to the referring page and force
+            a fresh load.  Refer to document.referrer so the previous URL is
+            explicitly requested from the server rather than using the browser
+            history cache.  If no referrer exists, fall back to history.back().
+          #}
+          <a class="btn ghost" href="#"
+             onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">Indietro</a>
+          {% endif %}
+        </div>
+      </form>
+      {# Revision controls for commercial components: separate form outside of the save
+         form.  Includes a Revisiona button and a multi‑select listing prior
+         revision labels when any revisions exist. #}
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <form method="post" action="{{ url_for('products.revise_structure', structure_id=component.structure.id) }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="btn secondary" type="submit" onclick="return confirm('Attenzione: la procedura di revisione è irreversibile.');">Revisiona</button>
+          {% if False and component.structure.revision_letters %}
+          <div class="field" style="display:flex; flex-direction:column;">
+            <span>Compatibile con:</span>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {% for letter in component.structure.revision_letters %}
+              <label style="display:flex; align-items:center; gap:4px;">
+                {# In revision controls for commercial components, preselect the current revision and prevent
+                   deselection with an onclick handler.  Other revisions reflect existing compatibility selections. #}
+                {% if letter == component.structure.revision_label %}
+                <input type="checkbox" value="{{ letter }}" checked disabled>
+                <input type="hidden" name="current_revision" value="{{ letter }}">
+                {% else %}
+                <input type="checkbox" name="compatible_revisions" value="{{ letter }}" {% if letter in component.structure.compatible_revisions_list %}checked{% endif %}>
+                {% endif %}
+                <span>{{ letter }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </form>
+      </div>
+    {% endif %}
+    {% if category == 'part' %}
+      {# Removed duplicate work-phase-section; handled within the main form above #}
+    {% endif %}
+    {# Only show navigation links back to the product and dashboard when the component is tied to an actual product.
+       For administrative default‑definition pages the dummy component will not have a creation date,
+       so omit these links to avoid 404s. #}
+    {% if component.created_at %}
+    <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+      <a href="{{ url_for('products.detail', id=product.id) }}" class="btn ghost">← Torna al prodotto</a>
+      <a href="{{ url_for('dashboard.index') }}" class="btn ghost">Dashboard</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% if category == 'part' %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var container = document.getElementById('phase-container');
+  var cyclesInput = document.querySelector('.cycles-json-input');
+  // Compute and update the cost for a given row based on standard time and work centre
+  function updateProcessingCostForRow(row) {
+    var procSel = row.querySelector('.processing-type-select');
+    var stdInput = row.querySelector('.standard-time-input');
+    var wcSel = row.querySelector('.work-center-select');
+    // Internal cost input resides inside the internal field, external cost input inside the external field
+    var internalCostInput = row.querySelector('.internal-field .processing-cost-input');
+    var externalCostInput = row.querySelector('.external-field .processing-cost-input');
+    var procType = procSel ? procSel.value : '';
+    if (procType === 'internal') {
+      // When switching to internal, clear any external cost input
+      if (externalCostInput) externalCostInput.value = '';
+      // Compute cost based on standard time (hours) and selected work centre hourly cost
+      var stdHours = parseFloat(stdInput ? stdInput.value : '') || 0;
+      var selectedOption = wcSel ? wcSel.options[wcSel.selectedIndex] : null;
+      var hourlyCost = selectedOption ? parseFloat(selectedOption.getAttribute('data-hourly-cost') || '') : NaN;
+      if (internalCostInput) {
+        if (!isNaN(stdHours) && !isNaN(hourlyCost)) {
+          internalCostInput.value = (stdHours * hourlyCost).toFixed(2);
+        } else {
+          internalCostInput.value = '';
+        }
+      }
+    } else if (procType === 'external') {
+      // When external, clear internal cost input; external cost input is user supplied
+      if (internalCostInput) internalCostInput.value = '';
+      // Do not modify external cost input here
+    } else {
+      // For unspecified processing type, clear both cost inputs
+      if (internalCostInput) internalCostInput.value = '';
+      if (externalCostInput) externalCostInput.value = '';
+    }
+  }
+  // Update the overall cost (top‑level) by summing the costs of all rows.
+  // The total cost per piece is the sum of the cost of each cycle.  For internal
+  // cycles the cost is computed automatically (hours × hourly cost).  For
+  // external cycles the user enters a single cost value.  To compute the
+  // aggregate cost we need to select the appropriate cost input depending on
+  // the processing type: use the internal cost field for internal cycles and
+  // the external cost field for external cycles.  Any empty or invalid values
+  // are ignored.  The overall processing cost is left blank when the sum is
+  // zero to avoid showing 0.00 when no cycles have costs defined.
+  function updateOverallCost() {
+    var overallCostInput = document.querySelector('.overall-processing-cost');
+    if (!overallCostInput || !container) return;
+    var rows = container.querySelectorAll('.phase-row');
+    var total = 0;
+    rows.forEach(function(row) {
+      var procSel = row.querySelector('.processing-type-select');
+      var type = procSel ? procSel.value : '';
+      var costEl = null;
+      if (type === 'external') {
+        // External cycles: pick the cost input inside the external field
+        costEl = row.querySelector('.external-field .processing-cost-input');
+      } else if (type === 'internal') {
+        // Internal cycles: pick the cost input inside the internal field
+        costEl = row.querySelector('.internal-field .processing-cost-input');
+      } else {
+        // Unspecified type: look for any processing cost input
+        costEl = row.querySelector('.processing-cost-input');
+      }
+      if (costEl && costEl.value) {
+        var val = parseFloat(costEl.value);
+        if (!isNaN(val)) {
+          total += val;
+        }
+      }
+    });
+    overallCostInput.value = total > 0 ? total.toFixed(2) : '';
+  }
+  // Toggle visibility of internal/external fields for a row
+  function toggleRowFields(row) {
+    var procSel = row.querySelector('.processing-type-select');
+    var typeVal = procSel ? procSel.value : '';
+    var internalFields = row.querySelectorAll('.internal-field');
+    var externalFields = row.querySelectorAll('.external-field');
+    internalFields.forEach(function(el) {
+      el.style.display = (typeVal === 'external') ? 'none' : '';
+    });
+    externalFields.forEach(function(el) {
+      el.style.display = (typeVal === 'external') ? '' : 'none';
+    });
+  }
+  // Show or hide remove buttons based on number of rows
+  function updateRemoveButtons() {
+    if (!container) return;
+    var rows = container.querySelectorAll('.phase-row');
+    var count = rows.length;
+    rows.forEach(function(row) {
+      var btn = row.querySelector('.remove-phase');
+      if (btn) {
+        btn.style.display = (count > 1) ? '' : 'none';
+      }
+    });
+  }
+  // Serialize additional cycles (excluding the first row) into JSON and store in hidden input
+  function updateCyclesJson() {
+    if (!container || !cyclesInput) return;
+    var rows = container.querySelectorAll('.phase-row');
+    var cycles = [];
+    rows.forEach(function(row, idx) {
+      if (idx === 0) return; // skip first row
+      var phase = row.querySelector('.phase-select') ? row.querySelector('.phase-select').value : '';
+      var proc = row.querySelector('.processing-type-select') ? row.querySelector('.processing-type-select').value : '';
+      var supplier = row.querySelector('.supplier-select') ? row.querySelector('.supplier-select').value : '';
+      // If a supplier code is entered in the dedicated input, prefer it over the select value
+      var supplierCodeEl = row.querySelector('.supplier-code-input');
+      var supplierCode = supplierCodeEl ? supplierCodeEl.value : '';
+      if (supplierCode) {
+        supplier = supplierCode;
+      }
+      var center = row.querySelector('.work-center-select') ? row.querySelector('.work-center-select').value : '';
+      var std = row.querySelector('.standard-time-input') ? row.querySelector('.standard-time-input').value : '';
+      var ltTheoEl = row.querySelector('.lead-time-theoretical-input');
+      var ltRealEl = row.querySelector('.lead-time-real-input');
+      var ltTheoretical = ltTheoEl ? ltTheoEl.value : '';
+      var ltReal = ltRealEl ? ltRealEl.value : '';
+      // Determine which cost input to use based on processing type.  For
+      // external cycles the cost is entered in the external-field; for
+      // internal cycles the cost is computed and displayed in the internal-field.
+      var costEl = null;
+      if (proc === 'external') {
+        costEl = row.querySelector('.external-field .processing-cost-input');
+      } else if (proc === 'internal') {
+        costEl = row.querySelector('.internal-field .processing-cost-input');
+      } else {
+        // Fallback: pick any processing-cost-input if type is unspecified
+        costEl = row.querySelector('.processing-cost-input');
+      }
+      var costVal = costEl ? costEl.value : '';
+      cycles.push({
+        work_phase_id: phase || null,
+        processing_type: proc || null,
+        supplier_id: supplier || null,
+        work_center_id: center || null,
+        standard_time: std || null,
+        lead_time_theoretical: ltTheoretical || null,
+        lead_time_real: ltReal || null,
+        processing_cost: costVal || null
+      });
+    });
+    cyclesInput.value = JSON.stringify(cycles);
+  }
+  // On initial load set up first row and compute costs/json
+  if (container) {
+    // Apply visibility and cost updates to all rows on load
+    var rowsInit = container.querySelectorAll('.phase-row');
+    rowsInit.forEach(function(row) {
+      toggleRowFields(row);
+      updateProcessingCostForRow(row);
+    });
+    updateOverallCost();
+    updateRemoveButtons();
+    updateCyclesJson();
+    // Event listeners on change
+    container.addEventListener('change', function(ev) {
+      var row = ev.target.closest('.phase-row');
+      if (!row) return;
+      if (ev.target.classList.contains('processing-type-select') || ev.target.classList.contains('work-center-select') || ev.target.classList.contains('phase-select') || ev.target.classList.contains('supplier-select') || ev.target.classList.contains('lead-time-theoretical-input') || ev.target.classList.contains('lead-time-real-input')) {
+        toggleRowFields(row);
+        updateProcessingCostForRow(row);
+        updateOverallCost();
+        updateCyclesJson();
+      }
+    });
+    // Event listeners on inputs to recalculate costs and update JSON in real time.
+    container.addEventListener('input', function(ev) {
+      var row = ev.target.closest('.phase-row');
+      if (!row) return;
+      // If the standard time changes, recompute internal cost for that row
+      if (ev.target.classList.contains('standard-time-input')) {
+        updateProcessingCostForRow(row);
+      }
+      // When the user edits the cost or supplier code for a cycle, recompute
+      // the overall cost and regenerate the JSON.  Include updates for
+      // standard time, processing cost inputs and supplier code inputs.
+      if (ev.target.classList.contains('standard-time-input') ||
+          ev.target.classList.contains('processing-cost-input') ||
+          ev.target.classList.contains('supplier-code-input')) {
+        updateOverallCost();
+        updateCyclesJson();
+      }
+    });
+    // Add new phase rows
+    document.addEventListener('click', function(ev) {
+      if (ev.target.classList.contains('add-phase')) {
+        ev.preventDefault();
+        var rows = container.querySelectorAll('.phase-row');
+        if (!rows || rows.length === 0) return;
+        var last = rows[rows.length - 1];
+        var newRow = last.cloneNode(true);
+        // Reset selects and inputs
+        newRow.querySelectorAll('select').forEach(function(sel) { sel.selectedIndex = 0; });
+        newRow.querySelectorAll('input').forEach(function(inp) { inp.value = ''; });
+        // Append new row
+        container.appendChild(newRow);
+        // Update numbering and UI
+        var countEls = container.querySelectorAll('.phase-count');
+        countEls.forEach(function(el, idx) { el.textContent = String(idx + 1); });
+        toggleRowFields(newRow);
+        updateProcessingCostForRow(newRow);
+        updateOverallCost();
+        updateRemoveButtons();
+        updateCyclesJson();
+      }
+    });
+    // Remove rows
+    container.addEventListener('click', function(ev) {
+      if (ev.target.classList.contains('remove-phase')) {
+        ev.preventDefault();
+        var row = ev.target.closest('.phase-row');
+        if (!row) return;
+        row.remove();
+        // Update numbering for remaining rows
+        var remaining = container.querySelectorAll('.phase-row');
+        remaining.forEach(function(el, idx) {
+          var cEl = el.querySelector('.phase-count');
+          if (cEl) cEl.textContent = String(idx + 1);
+        });
+        updateProcessingCostForRow(container.querySelector('.phase-row'));
+        updateOverallCost();
+        updateRemoveButtons();
+        updateCyclesJson();
+      }
+    });
+    // Ensure cycles_json is populated on form submission.  Without this
+    // handler the hidden field may be empty when the user submits the form
+    // without interacting after adding or modifying cycles.
+    var partForm = document.querySelector('form.form');
+    if (partForm && cyclesInput) {
+      partForm.addEventListener('submit', function() {
+        // Ensure cycles JSON is up to date before submitting
+        updateCyclesJson();
+        // If a supplier code has been entered on the primary (first) row, copy it
+        // into the supplier select field so that it is posted as supplier_id.  
+        // This allows users to manually specify the supplier identifier for external
+        // processing without selecting it from the dropdown.
+        var firstRow = container ? container.querySelector('.phase-row') : null;
+        if (firstRow) {
+          var codeInput = firstRow.querySelector('.supplier-code-input');
+          var selectInput = firstRow.querySelector('.supplier-select');
+          if (codeInput && selectInput) {
+            var codeVal = codeInput.value;
+            if (codeVal) {
+              selectInput.value = codeVal;
+            }
+          }
+        }
+      });
+    }
+  }
+});
+</script>
+{% endif %}
+{# Allow inline editing of the description subtitle via double click #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var subtitle = document.querySelector('.section-subtitle');
+  var formDescInput = document.querySelector('form input[name="description"]');
+  if (!subtitle) return;
+  function attachSubtitleEditing(elem) {
+    elem.addEventListener('dblclick', function() {
+      var current = elem.textContent.trim();
+      // Create an input field for editing
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = current;
+      input.className = 'edit-subtitle-input';
+      input.style.width = '100%';
+      input.style.border = '1px solid var(--glass-stroke)';
+      input.style.padding = '4px';
+      input.style.borderRadius = '4px';
+      // Replace the subtitle paragraph with the input
+      elem.replaceWith(input);
+      input.focus();
+      function save() {
+        var newVal = input.value.trim();
+        // Update the hidden/visible description input in the form if present
+        if (formDescInput) formDescInput.value = newVal;
+        // Restore the subtitle paragraph
+        var newP = document.createElement('p');
+        newP.className = 'section-subtitle';
+        newP.textContent = newVal || '—';
+        input.replaceWith(newP);
+        attachSubtitleEditing(newP);
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          input.blur();
+        }
+      });
+    });
+  }
+  attachSubtitleEditing(subtitle);
+});
+</script>
+<script>
+  // Handle clicks on checklist toggles for uploaded documents.  When the user
+  // checks or unchecks a document's checkbox, send a POST request to toggle
+  // the flag in the server-side checklist.  Errors trigger a simple alert.
+  document.addEventListener('DOMContentLoaded', function(){
+    const toggles = document.querySelectorAll('.checklist-toggle');
+    toggles.forEach(function(cb) {
+      cb.addEventListener('change', function(event) {
+        // Prevent the change event from bubbling up to ancestor forms.
+        // Without this, nested forms in the DOM can cause the checked
+        // state to reset immediately after clicking.
+        event.stopPropagation();
+        const structureId = this.dataset.structureId;
+        const docPath = this.dataset.docPath;
+        // Capture the current state of the toggle before sending the request.
+        const newState = this.checked;
+        const toggleEl = this;
+        fetch("{{ url_for('products.toggle_checklist_route') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structure_id: structureId, doc_path: docPath, flag: newState })
+        }).then(function(response) {
+          if (!response.ok) {
+            // On failure, revert the checkbox to its previous state and notify.
+            toggleEl.checked = !newState;
+            if (newState) {
+              toggleEl.removeAttribute('checked');
+            }
+            alert('Impossibile aggiornare la checklist.');
+          } else {
+            // Persist the visual state by updating the checked attribute so that
+            // subsequent rerenders (e.g. form submissions) preserve the state.
+            if (newState) {
+              toggleEl.setAttribute('checked', 'checked');
+            } else {
+              toggleEl.removeAttribute('checked');
+            }
+            // Additionally, automatically save the component by submitting the
+            // current edit form asynchronously.  This triggers the same
+            // server-side logic as clicking the "Salva" button but does not
+            // reload the page.  Include all form fields (including the
+            // CSRF token) via FormData.
+            try {
+              const saveForm = document.querySelector('form.form');
+              if (saveForm) {
+                const autoData = new FormData(saveForm);
+                fetch(saveForm.action, { method: 'POST', body: autoData });
+              }
+            } catch (e) {
+              // Swallow any errors silently since auto-save is a convenience
+            }
+          }
+        }).catch(function() {
+          // On network error revert and alert the user.
+          toggleEl.checked = !newState;
+          if (newState) {
+            toggleEl.removeAttribute('checked');
+          }
+          alert('Impossibile aggiornare la checklist.');
+        });
+      });
+    });
+  });
+</script>
+{% endblock %}

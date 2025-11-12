@@ -1,0 +1,35 @@
+{#
+  Partial template to recursively render a BOM tree node.  It expects the
+  following variables to be available in the context:
+
+    node: a dictionary with keys ``line`` (a BOMLine instance) and
+          ``children`` (a list of similar dictionaries for subcomponents)
+    product: the parent product object (used to build URLs)
+
+  The template renders the child product name, quantity and provides edit
+  and delete actions.  If the node has children, it recurses by including
+  itself for each child.
+#}
+<li>
+  <div class="list-row">
+    <div class="list-info">
+      <div class="list-title">{{ node.line.figlio.name }}</div>
+      <div class="list-subtitle">Quantità: {{ node.line.quantita }}</div>
+    </div>
+    <div class="list-actions">
+      <a class="btn ghost small" href="{{ url_for('products.edit_bom_component', product_id=product.id, line_id=node.line.id) }}">Modifica</a>
+      <form method="post" action="{{ url_for('products.remove_component', product_id=product.id, line_id=node.line.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn danger small" type="submit" onclick="return confirm('Eliminare questo componente?');">Elimina</button>
+      </form>
+    </div>
+  </div>
+  {% if node.children %}
+    <ul class="bom-children">
+      {# When iterating over children, rebind the loop variable ``node`` for recursion. #}
+      {% for node in node.children %}
+        {% include 'products/bom_node.html' %}
+      {% endfor %}
+    </ul>
+  {% endif %}
+</li>

@@ -1,0 +1,576 @@
+{% extends 'base.html' %}
+{% block title %}{{ category.capitalize() }} - {{ product.name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">
+    {% if category == 'assembly' %}Assiemi{% elif category == 'part' %}Parti{% else %}Parti a commercio{% endif %} per {{ product.name }}
+  </h2>
+  <a href="{{ url_for('products.detail', id=product.id) }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
+  {% if category == 'assembly' %}
+    <p class="section-subtitle">Visualizza le parti che compongono l'assieme.</p>
+    {% if components|length == 0 %}
+      <p class="muted">Nessuna parte di tipo assieme presente per questo prodotto.</p>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Immagine</th>
+              <th>Codice parte</th>
+              <th>Descrizione</th>
+              <th>Quantità</th>
+              <th>Revisione</th>
+          {# Show the total weight for each assembly row.  Because assemblies
+             consist of parts, the weight displayed here is the per‑piece
+             weight multiplied by the quantity.  Editing is disabled for
+             assemblies. #}
+          <th>Peso totale (kg)</th>
+          <th>Documenti</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for comp in components %}
+            <tr id="component-{{ comp.id }}">
+              {#
+                Per gli assiemi non distinguiamo tra un campo note e la descrizione.
+                La descrizione importata dalla distinta base viene conservata nella
+                proprietà ``notes`` del componente.  Se presente, questo valore
+                rappresenta la descrizione del componente; in caso contrario si
+                ricorre alla descrizione del tipo di struttura o, come ultima
+                risorsa, al nome del tipo.
+              #}
+              <td>
+                <div class="component-image">
+                  {% if comp.image_filename %}
+                    <img loading="lazy" src="{{ url_for('static', filename='uploads/' + comp.image_filename) }}" alt="{{ comp.structure.name }}">
+                  {% else %}
+                    {# Display a gear icon placeholder when no image is available.  Apply filters to render it white/grey for contrast. #}
+                    <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ comp.structure.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                  {% endif %}
+                </div>
+              </td>
+              <td>{{ comp.structure.name }}</td>
+              <td>
+                {#
+                  Display description for assembly rows.  When an assembly is
+                  imported or manually created the description may reside on
+                  the structure itself rather than the type.  The previous
+                  logic bypassed the node-level description entirely, which
+                  could lead to mismatches between the value shown here and
+                  the one editable in the component detail page.  Check the
+                  fields in this order:
+
+                    1. ``comp.description`` – explicit description stored on
+                       the ProductComponent.
+                    2. ``comp.notes`` – legacy description imported from
+                       external BOMs.
+                    3. ``comp.structure.description`` – per-node description
+                       defined in the structures section.
+                    4. ``comp.structure.type.description`` – default type
+                       description.
+                    5. ``comp.structure.type.name`` – fallback to the type name.
+
+                  This mirrors the logic used in the product detail tree and
+                  ensures consistency across views.
+                #}
+                {{ comp.description or comp.notes_plain or comp.structure.description or comp.structure.type.description or comp.structure.type.name }}
+              </td>
+              <td>{{ comp.quantity }}</td>
+              <td>{{ comp.structure.revision_label }}</td>
+              <td>
+                {# For assemblies, display the total weight (per piece weight × quantity)
+                   if a weight is defined.  Editing is disabled. #}
+                {% if comp.weight and comp.quantity %}
+                  {{ (comp.weight * comp.quantity)|round(3) }}
+                {% elif comp.weight %}
+                  {{ comp.weight|round(3) }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {# Document list for assemblies.  Use a namespace to count the total number of files. #}
+                {% set docs = documents_map.get(comp.id) %}
+                {% if docs %}
+                  {% set ns = namespace(count=0) %}
+                  {% for fld, files in docs.items() %}
+                    {% set ns.count = ns.count + (files|length) %}
+                  {% endfor %}
+                  {% if ns.count > 0 %}
+                    <ul style="margin:0; padding-left:16px; list-style:disc;">
+                      {% for fld, files in docs.items() %}
+                        {% if files|length > 0 %}
+                          {% for file in files %}
+                            {# Use the dedicated download endpoint to always download the file.  The
+                               ``download`` attribute hints to the browser that the resource
+                               should be saved rather than opened inline. #}
+                            <li style="display:flex; align-items:center; gap:4px;">
+                              {# Checklist toggle: allows the user to mark a document as part of the build/load checklist. #}
+                              {# Checklist toggle rendered as a switch.  Include `role="switch"`
+                                 for accessibility. #}
+                              {# Determine lowercase filename and base name for flexible matching.  The
+                                 base name removes the file extension and any ``_compiled_`` suffix. #}
+                              {% set fn_lower = file.name|lower %}
+                              {% set base_lower = fn_lower.rsplit('.', 1)[0].split('_compiled_')[0] %}
+                              <input type="checkbox" role="switch" class="checklist-toggle" data-structure-id="{{ comp.structure.id }}" data-doc-path="{{ file.path }}"
+                                     {#
+                                       Determine checked state solely based on the document's filename or its base
+                                       name (without extension and compiled suffix).  The directory path of a file
+                                       may change when a product or structure is renamed or revised, so matching on
+                                       the full path is unreliable.  The sets flagged_filenames_map and
+                                       flagged_basenames_map (keyed by component id) come directly from the
+                                       checklist entries and contain lower‑case names.  If either the filename or
+                                       base name appears in these sets, the toggle should be preselected.
+                                     #}
+                                     {% if file.path in flagged_docs_map.get(comp.id, set()) %}checked{% endif %}>
+                              <label style="font-size:12px;">
+                                Check list
+                                {# Show a visual indicator when the document is part of the checklist.  A green check mark appears next to the label when the file path is present in the flagged_docs_map for this component. #}
+                                {# Display a green tick when the document is selected.  Match on the filename or
+                                   base name only (case‑insensitive) instead of the full path for robustness across
+                                   renames.  #}
+                                {% if file.path in flagged_docs_map.get(comp.id, set()) %}<span style="color:green; font-size:14px; margin-left:4px;">✔</span>{% endif %}
+                              </label>
+                              <a href="{{ url_for('products.download_file', filename=file.path) }}" download>{{ file.name }}</a>
+                              {# Always display a delete button for uploaded documents.  Previously
+                                 the delete button was shown only for files under 'documents/'.
+                                 Remove the condition so users can delete any document. #}
+                              <form method="post" action="{{ url_for('products.delete_document') }}" style="display:inline; margin:0;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="filepath" value="{{ file.path }}">
+                                <input type="hidden" name="next" value="{{ request.full_path }}">
+                                <button type="submit" class="btn ghost small" style="padding:0 4px; font-size:12px;" onclick="return confirm('Sei sicuro di voler eliminare questo documento?');">✖</button>
+                              </form>
+                            </li>
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% elif category == 'part' %}
+    <p class="section-subtitle">Modifica le informazioni delle parti interne (lavorate). Usa i menu a discesa per selezionare voci dal dizionario.</p>
+    {% if components|length == 0 %}
+      <p class="muted">Nessuna parte presente per questo prodotto.</p>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome parte</th>
+              <th>Revisione</th>
+              <th>Descrizione</th>
+              <th>Fase di lavorazione</th>
+              <th>Tipo (interno/esterno)</th>
+              <th>Fornitore</th>
+              <th>Centro di lavorazione</th>
+              <th>Peso (kg)</th>
+              {# When the processing type is internal the processing cost is calculated
+                 automatically based on the selected work centre's hourly cost and the
+                 standard time expressed in hours.  For external processes the cost
+                 field remains empty.  #}
+              <th>Costo (€/pz)</th>
+              {# Display the standard time in hours instead of minutes.  Users enter
+                 values in hours; the backend converts them to minutes before
+                 persisting. #}
+              <th>Tempo standard (ore)</th>
+              {# Display lead times in days instead of minutes.  These fields are
+                 primarily relevant for external processes and commercial parts.  #}
+              <th>Lead time teorico (gg)</th>
+              <th>Lead time reale (gg)</th>
+              <th>Note</th>
+              <th>Documenti</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for comp in components %}
+            <tr id="component-{{ comp.id }}">
+              <td>{{ comp.structure.name }}</td>
+              <td>{{ comp.structure.revision_label }}</td>
+              <td>
+                <form method="post" class="form-row">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="component_id" value="{{ comp.id }}">
+                  <input type="text" name="description" value="{{ comp.description or comp.notes_plain or '' }}">
+              </td>
+              <td>
+                  <select name="work_phase_id">
+                    <option value="">—</option>
+                    {% for wp in work_phases %}
+                      <option value="{{ wp.id }}" {% if comp.work_phase_id == wp.id %}selected{% endif %}>{{ wp.name }}</option>
+                    {% endfor %}
+                  </select>
+              </td>
+              <td>
+                  <select name="processing_type" class="processing-type-select">
+                    <option value="">—</option>
+                    <option value="internal" {% if comp.processing_type == 'internal' %}selected{% endif %}>Interna</option>
+                    <option value="external" {% if comp.processing_type == 'external' %}selected{% endif %}>Esterna</option>
+                  </select>
+              </td>
+              <td>
+                  <select name="supplier_id">
+                    <option value="">—</option>
+                    {% for s in suppliers %}
+                      <option value="{{ s.id }}" {% if comp.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                  </select>
+              </td>
+              <td>
+                  <select name="work_center_id" class="work-center-select">
+                    <option value="" data-hourly-cost="">—</option>
+                    {% for c in work_centers %}
+                      <option value="{{ c.id }}" data-hourly-cost="{{ c.hourly_cost }}" {% if comp.work_center_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                  </select>
+              </td>
+              {# Weight input: allow three decimals maximum by setting step to 0.001.  #}
+              <td><input type="number" step="0.001" name="weight" value="{{ comp.weight|round(3) if comp.weight is not none else '' }}"></td>
+              {# Processing cost: for internal processing types calculate the cost in EUR
+                 based on the standard time (converted to hours) and the hourly cost
+                 of the selected work centre.  The field is read‑only to prevent
+                 manual edits.  For external processes the value remains blank.  #}
+              <td>
+                {%- if comp.processing_type == 'internal' and comp.standard_time is not none and comp.work_center and comp.work_center.hourly_cost is not none -%}
+                  {%- set std_hours = (comp.standard_time / 60.0) -%}
+                  <input type="number" step="0.01" class="processing-cost-input" readonly value="{{ (std_hours * comp.work_center.hourly_cost)|round(2) }}">
+                {%- else -%}
+                  <input type="number" step="0.01" class="processing-cost-input" readonly value="">
+                {%- endif -%}
+              </td>
+              {# Standard time: display value in hours.  When the processing is external
+                 the field is disabled because it is not applicable.  #}
+              <td>
+                {%- set std_hours_value = (comp.standard_time / 60.0) if comp.standard_time is not none else '' -%}
+                <input type="number" step="0.01" name="standard_time" class="standard-time-input" value="{{ std_hours_value }}" {{ 'disabled' if comp.processing_type == 'external' else '' }}>
+              </td>
+              {# Lead time theoretical: display value in days.  This field is relevant
+                 for external processes; for internal processes it can still be set
+                 but remains optional.  #}
+              <td>
+                {%- set lt_theo_days = (comp.lead_time_theoretical / 1440.0) if comp.lead_time_theoretical is not none else '' -%}
+                <input type="number" step="0.01" name="lead_time_theoretical" class="lead-time-theoretical-input" value="{{ lt_theo_days }}" {{ 'disabled' if comp.processing_type == 'internal' else '' }}>
+              </td>
+              {# Lead time real: display value in days.  Same visibility rules as
+                 theoretical lead time.  #}
+              <td>
+                {%- set lt_real_days = (comp.lead_time_real / 1440.0) if comp.lead_time_real is not none else '' -%}
+                <input type="number" step="0.01" name="lead_time_real" class="lead-time-real-input" value="{{ lt_real_days }}" {{ 'disabled' if comp.processing_type == 'internal' else '' }}>
+              </td>
+              <td><input type="text" name="notes" value="{{ comp.notes_plain or '' }}"></td>
+              <td>
+                {# Document list for parts.  Use a namespace to count files. #}
+                {% set docs = documents_map.get(comp.id) %}
+                {% if docs %}
+                  {% set ns = namespace(count=0) %}
+                  {% for fld, files in docs.items() %}
+                    {% set ns.count = ns.count + (files|length) %}
+                  {% endfor %}
+                  {% if ns.count > 0 %}
+                    <ul style="margin:0; padding-left:16px; list-style:disc;">
+                      {% for fld, files in docs.items() %}
+                        {% if files|length > 0 %}
+                          {% for file in files %}
+                            <li style="display:flex; align-items:center; gap:4px;">
+                              {# Lowercase filename and base name for flexible matching #}
+                              {% set fn_lower = file.name|lower %}
+                              {% set base_lower = fn_lower.rsplit('.', 1)[0].split('_compiled_')[0] %}
+                              <input type="checkbox" role="switch" class="checklist-toggle" data-structure-id="{{ comp.structure.id }}" data-doc-path="{{ file.path }}"
+                                     {% if file.path in flagged_docs_map.get(comp.id, set()) %}checked{% endif %}>
+                              <label style="font-size:12px;">
+                                Check list
+                                {% if file.path in flagged_docs_map.get(comp.id, set()) %}<span style="color:green; font-size:14px; margin-left:4px;">✔</span>{% endif %}
+                              </label>
+                              <a href="{{ url_for('products.download_file', filename=file.path) }}" download>{{ file.name }}</a>
+                              <form method="post" action="{{ url_for('products.delete_document') }}" style="display:inline; margin:0;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="filepath" value="{{ file.path }}">
+                                <input type="hidden" name="next" value="{{ request.full_path }}">
+                                <button type="submit" class="btn ghost small" style="padding:0 4px; font-size:12px;" onclick="return confirm('Sei sicuro di voler eliminare questo documento?');">✖</button>
+                              </form>
+                            </li>
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td><button class="btn primary small" type="submit">Aggiorna</button></td>
+                </form>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    {# Attach a script to update processing costs in real time when editing part rows. #}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Compute initial costs for all rows on page load
+      var table = document.querySelector('table');
+      if (!table) return;
+      function computeRowCost(row) {
+        if (!row) return;
+        var procSel = row.querySelector('select.processing-type-select');
+        var typeVal = procSel ? procSel.value : '';
+        var costInput = row.querySelector('.processing-cost-input');
+        if (!costInput) return;
+        if (typeVal !== 'internal') {
+          costInput.value = '';
+          return;
+        }
+        var stdInput = row.querySelector('input.standard-time-input');
+        var stdVal = stdInput ? parseFloat(stdInput.value) : NaN;
+        var centerSelect = row.querySelector('select.work-center-select');
+        var centerOpt = centerSelect && centerSelect.selectedOptions.length > 0 ? centerSelect.selectedOptions[0] : null;
+        var hourlyCost = centerOpt ? parseFloat(centerOpt.dataset.hourlyCost) : NaN;
+        if (!isNaN(stdVal) && !isNaN(hourlyCost)) {
+          var cost = stdVal * hourlyCost;
+          costInput.value = cost.toFixed(2);
+        } else {
+          costInput.value = '';
+        }
+      }
+      // Compute initial cost for each data row
+      table.querySelectorAll('tbody tr').forEach(function(row) {
+        computeRowCost(row);
+      });
+      // Listen for changes in relevant fields to update the cost
+      table.addEventListener('change', function(ev) {
+        var row = ev.target.closest('tr');
+        if (!row) return;
+        // When the processing type or work centre changes we recalculate the cost.
+        if (ev.target.matches('select.processing-type-select') ||
+            ev.target.matches('select.work-center-select') ||
+            ev.target.matches('input.standard-time-input')) {
+          computeRowCost(row);
+        }
+      });
+      // Listen for input events on the standard time input to update the cost as the user types.
+      table.addEventListener('input', function(ev) {
+        var row = ev.target.closest('tr');
+        if (!row) return;
+        if (ev.target.matches('input.standard-time-input')) {
+          computeRowCost(row);
+        }
+      });
+    });
+    </script>
+  {% else %} {# commercial #}
+    <p class="section-subtitle">Modifica le informazioni delle parti commerciali acquistate. Usa i menu a discesa per selezionare voci dal dizionario.</p>
+    {% if components|length == 0 %}
+      <p class="muted">Nessuna parte a commercio presente per questo prodotto.</p>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Immagine</th>
+              <th>Codice</th>
+              <th>Revisione</th>
+              <th>Descrizione</th>
+              <th>Peso (kg)</th>
+              <th>Fornitore</th>
+              <th>€/pz</th>
+              <th>Lotto minimo</th>
+              <th>Lead time teorico (gg)</th>
+              <th>Lead time reale (gg)</th>
+              <th>Note</th>
+              <th>Documenti</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for comp in components %}
+            <tr id="component-{{ comp.id }}">
+              <td>
+                <div class="component-image">
+                  {% if comp.image_filename %}
+                    <img loading="lazy" src="{{ url_for('static', filename='uploads/' + comp.image_filename) }}" alt="{{ comp.structure.name }}">
+                  {% else %}
+                    {# Display a gear icon placeholder for missing images.  Use filters to lighten the icon to a white/grey tone. #}
+                    <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ comp.structure.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                  {% endif %}
+                </div>
+              </td>
+              <td>{{ comp.structure.name }}</td>
+              <td>{{ comp.structure.revision_label }}</td>
+              <td>
+                <form method="post" class="form-row">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="component_id" value="{{ comp.id }}">
+                  <input type="text" name="description" value="{{ comp.description or comp.notes_plain or '' }}">
+              </td>
+              <td>
+                {# Allow editing of the weight for commercial components.  Restrict the
+                   step to three decimals (0.001) similar to parts.  When the quantity is
+                   greater than one the total weight is derived when needed. #}
+                <input type="number" step="0.001" name="weight" value="{{ comp.weight|round(3) if comp.weight is not none else '' }}">
+              </td>
+              <td>
+                  <select name="supplier_id">
+                    <option value="">—</option>
+                    {% for s in suppliers %}
+                      <option value="{{ s.id }}" {% if comp.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                  </select>
+              </td>
+              <td><input type="number" step="0.01" name="price_per_unit" value="{{ comp.price_per_unit or '' }}"></td>
+              <td><input type="number" step="1" name="minimum_order_qty" value="{{ comp.minimum_order_qty or '' }}"></td>
+              <td>
+                {# Display the theoretical lead time in days.  Convert the stored value
+                   from minutes to days by dividing by 1440. #}
+                <input type="number" step="0.01" name="lead_time_theoretical" value="{{ (comp.lead_time_theoretical / 1440.0)|round(2) if comp.lead_time_theoretical is not none else '' }}">
+              </td>
+              <td>
+                {# Display the real lead time in days.  Convert minutes to days. #}
+                <input type="number" step="0.01" name="lead_time_real" value="{{ (comp.lead_time_real / 1440.0)|round(2) if comp.lead_time_real is not none else '' }}">
+              </td>
+              <td><input type="text" name="notes" value="{{ comp.notes_plain or '' }}"></td>
+              <td>
+                {# Document list for commercial parts.  Use a namespace to count files. #}
+                {% set docs = documents_map.get(comp.id) %}
+                {% if docs %}
+                  {% set ns = namespace(count=0) %}
+                  {% for fld, files in docs.items() %}
+                    {% set ns.count = ns.count + (files|length) %}
+                  {% endfor %}
+                  {% if ns.count > 0 %}
+                    <ul style="margin:0; padding-left:16px; list-style:disc;">
+                      {% for fld, files in docs.items() %}
+                        {% if files|length > 0 %}
+                          {% for file in files %}
+                            <li style="display:flex; align-items:center; gap:4px;">
+                              {# Lowercase filename and base name for flexible matching #}
+                              {% set fn_lower = file.name|lower %}
+                              {% set base_lower = fn_lower.rsplit('.', 1)[0].split('_compiled_')[0] %}
+                              <input type="checkbox" role="switch" class="checklist-toggle" data-structure-id="{{ comp.structure.id }}" data-doc-path="{{ file.path }}"
+                                     {% if file.path in flagged_docs_map.get(comp.id, set()) %}checked{% endif %}>
+                              <label style="font-size:12px;">
+                                Check list
+                                {% if file.path in flagged_docs_map.get(comp.id, set()) %}<span style="color:green; font-size:14px; margin-left:4px;">✔</span>{% endif %}
+                              </label>
+                              <a href="{{ url_for('products.download_file', filename=file.path) }}" download>{{ file.name }}</a>
+                              <form method="post" action="{{ url_for('products.delete_document') }}" style="display:inline; margin:0;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="filepath" value="{{ file.path }}">
+                                <input type="hidden" name="next" value="{{ request.full_path }}">
+                                <button type="submit" class="btn ghost small" style="padding:0 4px; font-size:12px;" onclick="return confirm('Sei sicuro di voler eliminare questo documento?');">✖</button>
+                              </form>
+                            </li>
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td><button class="btn primary small" type="submit">Aggiorna</button></td>
+                </form>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+<script>
+// Evidenzia una riga della tabella quando l'URL contiene il parametro "highlight".
+// Questo script cerca un elemento con id "component-<id>" e applica una
+// classe CSS per evidenziarlo temporaneamente, quindi scorre la tabella in
+// modo che la riga sia visibile.  Dopo alcuni secondi rimuove la classe.
+document.addEventListener('DOMContentLoaded', function(){
+  const params = new URLSearchParams(window.location.search);
+  const highlight = params.get('highlight');
+  if (highlight) {
+    const row = document.getElementById('component-' + highlight);
+    if (row) {
+      row.classList.add('highlight');
+      // Scroll the highlighted row into view, centering it in the viewport
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Remove the highlight after 4 seconds
+      setTimeout(() => {
+        row.classList.remove('highlight');
+      }, 4000);
+    }
+  }
+});
+</script>
+<script>
+// Handle clicks on checklist toggles for document entries.  When the user
+// checks or unchecks a document's checkbox, send an asynchronous POST
+// request to toggle the flag in the server-side checklist.  No UI
+// feedback is provided on success; errors trigger an alert.
+document.addEventListener('DOMContentLoaded', function(){
+  const toggles = document.querySelectorAll('.checklist-toggle');
+  toggles.forEach(function(cb) {
+    cb.addEventListener('change', function(event) {
+      // Prevent the change event from bubbling up to ancestor forms.
+      // Nested forms in the markup can otherwise cause the parent form
+      // to reset the checkbox state.  Stopping propagation keeps the
+      // visual state in sync with the internal value.
+      event.stopPropagation();
+      const structureId = this.dataset.structureId;
+      const docPath = this.dataset.docPath;
+      // Capture the new state of the toggle before sending the request.  Storing
+      // this value allows us to revert the state if the server responds with
+      // an error or the network request fails.
+      const newState = this.checked;
+      const toggleEl = this;
+      fetch("{{ url_for('products.toggle_checklist_route') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structure_id: structureId, doc_path: docPath, flag: newState })
+      }).then(function(response) {
+        if (!response.ok) {
+          // Revert the toggle and inform the user when the request fails.
+          toggleEl.checked = !newState;
+          if (newState) {
+            toggleEl.removeAttribute('checked');
+          }
+          alert('Impossibile aggiornare la checklist.');
+        } else {
+          // Persist the visual state by updating the checked attribute.  This
+          // guards against the control resetting when forms or lists are
+          // re-rendered on the page.
+          if (newState) {
+            toggleEl.setAttribute('checked', 'checked');
+          } else {
+            toggleEl.removeAttribute('checked');
+          }
+        }
+      }).catch(function() {
+        // Revert on network error and notify the user.
+        toggleEl.checked = !newState;
+        if (newState) {
+          toggleEl.removeAttribute('checked');
+        }
+        alert('Impossibile aggiornare la checklist.');
+      });
+    });
+  });
+});
+</script>
+{% endblock %}

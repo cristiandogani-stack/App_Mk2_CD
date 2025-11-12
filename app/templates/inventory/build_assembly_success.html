@@ -1,0 +1,69 @@
+{#
+  Success page for completing an assembly build inside a production box modal.
+
+  When an assembly is built from within a modal (embedded flag true), the
+  backend returns this minimal page instead of redirecting back to the
+  production box.  The page contains a small JavaScript snippet that
+  instructs the parent window to close the build modal and reload the
+  list view so that the box status is refreshed immediately.  Outside of
+  embedded mode this template should not be used; the ``build_assembly``
+  view continues to redirect to the appropriate back_url when the build
+  happens outside of a production box.
+#}
+
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <title>Assemblaggio completato</title>
+  </head>
+  <body>
+    <script>
+      // Immediately execute a function to close the modal and refresh the parent
+      (function() {
+        try {
+          // Obtain references to the parent document.  When this page is
+          // loaded inside an iframe the parent document contains the
+          // production_box.html markup with buildModal and buildFrame elements.
+          var parentDoc = window.parent && window.parent.document;
+          if (parentDoc) {
+            // Reset the iframe so that its load handler is removed and
+            // subsequent loads do not trigger unexpected callbacks.
+            var iframe = parentDoc.getElementById('buildFrame');
+            if (iframe) {
+              iframe.onload = null;
+              iframe.src = '';
+            }
+            // Hide the modal overlay to return focus to the parent page.
+            var modal = parentDoc.getElementById('buildModal');
+            if (modal) {
+              modal.style.display = 'none';
+            }
+          }
+        } catch (err) {
+          // Ignore any errors encountered while interacting with the parent
+        }
+        // Trigger a reload of the parent page so that the list of stock
+        // items reflects the newly built assembly.  Use location.reload()
+        // instead of assigning location.href to preserve scroll position.
+        try {
+          if (window.parent && window.parent.location) {
+            window.parent.location.reload();
+          }
+        } catch (err) {
+          // Fallback: attempt to navigate to the back_url provided via
+          // template context when reloading the parent is not possible.
+          // The server interpolates ``back_url`` when rendering.
+          {% if back_url %}
+          window.location.href = {{ back_url|tojson }};
+          {% else %}
+          window.location.reload();
+          {% endif %}
+        }
+      })();
+    </script>
+    <noscript>
+      <p>Assemblaggio completato. È possibile chiudere questa finestra.</p>
+    </noscript>
+  </body>
+</html>

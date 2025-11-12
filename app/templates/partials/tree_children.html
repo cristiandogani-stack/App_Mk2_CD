@@ -1,0 +1,35 @@
+{#
+  Render the children of a structure node as an expandable tree.
+  We use HTML <details> and <summary> tags so that any node with
+  children can be collapsed/expanded.  Nodes without children are
+  rendered simply as a list item with a link.
+#}
+{# Render the children of a structure node.  Sort children alphabetically by
+   name so that the hierarchy appears in a predictable order.  When a child
+   has further descendants we wrap it in a <details>/<summary> pair so the
+   subtree can be collapsed/expanded.  Leaf nodes are rendered as simple links. #}
+{% if n.children %}
+  <ul>
+    {% for c in n.children|sort(attribute='name') %}
+      {# Skip draft nodes marked with table_assieme, table_parte or table_commerciale #}
+      {% if not (c.table_assieme or c.table_parte or c.table_commerciale) %}
+        <li>
+          {% if c.children and c.children|length > 0 %}
+            <details class="tree-node">
+              <summary><a href="{{ url_for('admin.edit_structure_node', node_id=c.id) }}">{{ c.name }}</a></summary>
+              {# Recursively render this child's descendants.  Save and restore
+                 the ``n`` variable to avoid leaking the assignment outside
+                 the included template. #}
+              {% set _old_n = n %}
+              {% set n = c %}
+              {% include 'partials/tree_children.html' %}
+              {% set n = _old_n %}
+            </details>
+          {% else %}
+            <a href="{{ url_for('admin.edit_structure_node', node_id=c.id) }}">{{ c.name }}</a>
+          {% endif %}
+        </li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+{% endif %}

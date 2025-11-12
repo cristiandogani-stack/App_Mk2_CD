@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Utenti - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Gestione Utenti</h2>
+  <p class="section-subtitle">Visualizza e gestisci gli account registrati.</p>
+  <div style="margin-bottom:12px;">
+    <a class="btn primary" href="{{ url_for('admin.new_user') }}">Nuovo utente</a>
+  </div>
+  {% if users|length == 0 %}
+    <p class="muted">Non ci sono utenti registrati.</p>
+  {% else %}
+    <div class="list glass">
+      {% for u in users %}
+      <div class="list-row">
+        <div class="list-info">
+          <div class="list-title">{{ u.email }}</div>
+          <div class="list-subtitle">Ruolo: {{ u.role }}</div>
+        </div>
+        <div class="list-actions">
+          <form method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questo utente?');">Elimina</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

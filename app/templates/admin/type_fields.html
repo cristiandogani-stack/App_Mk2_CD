@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Campi - {{ type.name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Campi per {{ type.name }}</h2>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Nome campo</span>
+      <input name="name" required placeholder="es. materiale">
+    </label>
+    <button class="btn primary">Aggiungi campo</button>
+  </form>
+  <div style="height:12px;"></div>
+  <h3 class="card-title">Elenco campi</h3>
+  {% if fields|length == 0 %}
+    <p class="muted">Nessun campo definito per questo tipo.</p>
+  {% else %}
+    <div class="list glass">
+      {% for f in fields %}
+      <div class="list-row">
+        <div class="list-title">{{ f.name }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

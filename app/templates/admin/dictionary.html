@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block title %}Dizionario - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Dizionario</h2>
+  <p class="section-subtitle">Gestisci fornitori, centri di lavoro, fasi di lavorazione e costi dei materiali.</p>
+  <div class="grid grid-2">
+    <!-- Suppliers -->
+    <div class="card glass">
+      <h3 class="card-title">Fornitori</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="category" value="supplier">
+        <label class="field"><span>Nome</span><input name="name" required></label>
+        <button class="btn primary" type="submit">Aggiungi</button>
+      </form>
+      {% if suppliers|length > 0 %}
+        <div class="list glass" style="margin-top:8px;">
+          {% for s in suppliers %}
+          <div class="list-row">
+            <div class="list-info">
+              <div class="list-title">{{ s.name }}</div>
+            </div>
+            <div class="list-actions">
+              <a class="btn small ghost" href="{{ url_for('admin.edit_supplier', supplier_id=s.id) }}">Modifica</a>
+              <form method="post" action="{{ url_for('admin.delete_supplier', supplier_id=s.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questo fornitore?');">Elimina</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Work Centers -->
+    <div class="card glass">
+      <h3 class="card-title">Centri di lavoro</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="category" value="work_center">
+        <div class="grid grid-2">
+          <label class="field"><span>Nome</span><input name="name" required></label>
+          <label class="field"><span>Costo orario (€/h)</span><input name="cost" type="number" step="0.0001"></label>
+        </div>
+        <button class="btn primary" type="submit">Aggiungi</button>
+      </form>
+      {% if work_centers|length > 0 %}
+        <div class="list glass" style="margin-top:8px;">
+          {% for c in work_centers %}
+          <div class="list-row">
+            <div class="list-info">
+              <div class="list-title">{{ c.name }}</div>
+              <div class="list-subtitle">
+                {% if c.hourly_cost %}{{ c.hourly_cost }} €/h{% else %}—{% endif %}
+              </div>
+            </div>
+            <div class="list-actions">
+              <a class="btn small ghost" href="{{ url_for('admin.edit_work_center', center_id=c.id) }}">Modifica</a>
+              <form method="post" action="{{ url_for('admin.delete_work_center', center_id=c.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questo centro di lavoro?');">Elimina</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Work Phases -->
+    <div class="card glass">
+      <h3 class="card-title">Fasi di lavorazione</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="category" value="work_phase">
+        <label class="field"><span>Nome</span><input name="name" required></label>
+        <button class="btn primary" type="submit">Aggiungi</button>
+      </form>
+      {% if work_phases|length > 0 %}
+        <div class="list glass" style="margin-top:8px;">
+          {% for p in work_phases %}
+          <div class="list-row">
+            <div class="list-info">
+              <div class="list-title">{{ p.name }}</div>
+            </div>
+            <div class="list-actions">
+              <a class="btn small ghost" href="{{ url_for('admin.edit_work_phase', phase_id=p.id) }}">Modifica</a>
+              <form method="post" action="{{ url_for('admin.delete_work_phase', phase_id=p.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questa fase di lavorazione?');">Elimina</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <!-- Material Costs -->
+    <div class="card glass">
+      <h3 class="card-title">Costo materiali (EUR)</h3>
+      <form method="post" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="category" value="material_cost">
+        <div class="grid grid-2">
+          <label class="field"><span>Materiale</span><input name="material" required></label>
+          <label class="field"><span>Costo €/kg</span><input name="cost" type="number" step="0.0001"></label>
+        </div>
+        <button class="btn primary" type="submit">Aggiungi</button>
+      </form>
+      {% if material_costs|length > 0 %}
+        <div class="list glass" style="margin-top:8px;">
+          {% for m in material_costs %}
+          <div class="list-row">
+            <div class="list-info">
+              <div class="list-title">{{ m.material }}</div>
+              <div class="list-subtitle">
+                {% if m.cost_eur %}{{ m.cost_eur }} €/kg{% else %}—{% endif %}
+              </div>
+            </div>
+            <div class="list-actions">
+              <a class="btn small ghost" href="{{ url_for('admin.edit_material_cost', mc_id=m.id) }}">Modifica</a>
+              <form method="post" action="{{ url_for('admin.delete_material_cost', mc_id=m.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questo costo materiale?');">Elimina</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

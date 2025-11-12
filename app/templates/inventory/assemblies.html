@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+
+{#
+  Assemblies view for the warehouse.
+
+  This page was previously the default inventory dashboard and lists
+  all assemblies along with their nested components in a collapsible
+  tree.  Summary cards at the top show how many assemblies are
+  completed versus those that still need to be built.  A tab bar
+  provides navigation between assemblies, parts, commercial items,
+  products (overview) and the full archive.  The active tab is
+  determined by the ``active_tab`` parameter passed from the view.
+#}
+
+{% block title %}Magazzino – Assiemi{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button to return to the previous page.  Uses the referrer URL
+     if available, falling back to the warehouse index. #}
+  {# Always return to the inventory overview instead of relying on the HTTP referrer. #}
+  <a href="{{ url_for('inventory.index') }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: Assiemi</h2>
+
+  {# Secondary navigation within the warehouse module.  The
+     "Assiemi" link now points to the assemblies view instead of the
+     root index.  The "Prodotti" link navigates back to the product
+     overview. #}
+  {# Tab navigation across warehouse categories.  Assemblies, parts and commercial
+     pages can be accessed directly from this bar, along with products and
+     history.  The ``active_tab`` variable determines which tab is highlighted. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    <a href="{{ url_for('inventory.list_assemblies') }}"
+       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+    <a href="{{ url_for('inventory.list_parts') }}"
+       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+    <a href="{{ url_for('inventory.list_commercial') }}"
+       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    {# Link to the production history (formerly the assembly archive).  The label
+       has been updated to "Storico produzione".  When the archive tab is
+       active this button is highlighted. #}
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+
+  {# Search bar for filtering assemblies and their component trees.  Allows users to quickly locate components by code or description. #}
+  <div style="margin-bottom:12px;">
+    <input type="text" id="assembly-search" class="input" placeholder="Cerca..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+  </div>
+
+  {# Summary cards for completed and incomplete assemblies #}
+  <div class="grid grid-2" style="margin-bottom:20px;">
+    <div class="card glass">
+      <h3 class="card-title">Assiemi completati</h3>
+      <p style="font-size:32px; font-weight:600; margin:8px 0;">
+        {{ completed }}
+      </p>
+    </div>
+    <div class="card glass">
+      <h3 class="card-title">Assiemi da completare</h3>
+      <p style="font-size:32px; font-weight:600; margin:8px 0;">
+        {{ incomplete }}
+      </p>
+    </div>
+  </div>
+
+  {# Tree view of assemblies and components #}
+  {% if assemblies|length == 0 %}
+    <p class="muted">Nessun assieme definito.</p>
+  {% else %}
+    <h3 class="card-title">Assiemi e componenti</h3>
+
+    {# Button to expand/collapse all assembly nodes.  Placed above the table header.  Clicking toggles all
+       <details> elements open or closed.  The label changes based on the current state. #}
+    <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
+      <button id="toggle-all" type="button" class="btn small ghost">Esplodi&nbsp;tutto</button>
+    </div>
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Tipo</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {# Recursive macro to render a structure node and its children #}
+      {% macro render_node(node, index) %}
+        {% set has_children = node.children|length > 0 %}
+        <details id="part-{{ node.id }}" class="component-node" {% if not has_children %}data-leaf="true"{% endif %} open>
+          <summary>
+            <div class="component-row">
+              <div class="col-number">{{ index if index is not none else '' }}</div>
+              <div class="col-image">
+                {# Display the assembly/component image if available; otherwise show a placeholder dash. #}
+                {% if node.image_filename %}
+                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + node.image_filename) }}" alt="{{ node.name }}">
+                {% else %}
+                  <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ node.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+                {% endif %}
+              </div>
+              <div class="col-code">{{ node.name }}</div>
+              <div class="col-desc">
+                {#
+                  Always display the structure description here rather than the
+                  hard‑coded word "Assieme" for assemblies.  Operators need
+                  to see the detailed description of each assembly just like
+                  they do for parts and commercial items.  If no description
+                  is defined, fall back to a dash.  The category column
+                  below continues to distinguish assemblies from other
+                  types.
+                #}
+                {{ node.description or '—' }}
+              </div>
+              <div class="col-revision">{{ node.revision_label }}</div>
+              <div class="col-category">
+                {% if node.flag_assembly %}Assieme{% elif node.flag_commercial %}Commerciale{% else %}Parte{% endif %}
+              </div>
+              <div class="col-qty">{{ (node.quantity_in_stock or 0)|int }}</div>
+              <div class="col-actions">
+                {#
+                  Show build actions and readiness status.  For assemblies we
+                  display a green indicator with the number of assemblies
+                  that can be built from current stock.  The "Costruisci"
+                  button is enabled only when at least one unit can be built.
+                #}
+                {% if node.flag_assembly %}
+                  {# Determine available quantity by subtracting reserved units.
+                     If available_qty is defined use it; otherwise fall back
+                     to complete_qty. #}
+                  {% set avail = (node.available_qty if node.available_qty is not none else node.complete_qty) %}
+                  {% if avail and avail > 0 %}
+                    <span style="color:#10b981; font-weight:600; margin-right:6px;">
+                      🟢 {{ avail }}
+                    </span>
+                    <a href="{{ url_for('inventory.build_assembly', assembly_id=node.id) }}" class="btn primary small">Costruisci</a>
+                  {% else %}
+                    <span class="muted" style="margin-right:6px;">&nbsp;</span>
+                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5;">Costruisci</a>
+                  {% endif %}
+                {% else %}
+                  {#
+                    Replace the inline quantity form for parts and commercial items
+                    with a single link to the load component view.  The
+                    load_component page will present any checklist‑flagged
+                    documentation for the selected structure and allow the
+                    operator to upload compiled documents before adding stock.
+                  #}
+                  <a href="{{ url_for('inventory.load_component', part_id=node.id) }}" class="btn ghost small">Carica</a>
+                {% endif %}
+              </div>
+            </div>
+          </summary>
+          {% if has_children %}
+            <div class="children">
+              {% for child in node.children|sort(attribute='id') %}
+                {{ render_node(child, loop.index) }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </details>
+      {% endmacro %}
+
+      {% for assembly in assemblies %}
+        {{ render_node(assembly, loop.index) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# Ideas and future improvements #}
+  <div class="card glass" style="margin-top:24px; padding:16px;">
+    <h4 class="card-title">Idee e miglioramenti</h4>
+    <ul style="padding-left:20px; margin:8px 0; list-style:disc;">
+      <li>Visualizzare indicatori di stato (verde/giallo/rosso) in base alle quantità e alle soglie di riordino.</li>
+      <li>Introdurre una barra di ricerca per individuare rapidamente componenti o assiemi.</li>
+      <li>Permettere il filtraggio per categoria (assiemi, parti, commerciali) o per disponibilità.</li>
+      <li>Esportare l'inventario in formato CSV o PDF per reportistica e analisi.</li>
+      <li>Mostrare grafici e KPI del magazzino nella dashboard, ad esempio componenti sotto scorta.</li>
+      <li>Inviare notifiche quando le quantità scendono sotto le soglie di sicurezza.</li>
+    </ul>
+  </div>
+
+  <script>
+  // Filter assemblies and their component trees based on the search query.
+  // Recursively searches each assembly node and its descendants for matches.
+  document.addEventListener('DOMContentLoaded', function(){
+    const input = document.getElementById('assembly-search');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      // Each top-level assembly is rendered as a <details> element inside .component-tree
+      const assemblyNodes = document.querySelectorAll('.component-tree > details');
+      assemblyNodes.forEach(node => {
+        const match = filterDetail(node, query);
+        node.style.display = (match || query === '') ? '' : 'none';
+      });
+    });
+    function filterDetail(detailEl, query) {
+      let match = false;
+      // Examine the summary row text
+      const summaryRow = detailEl.querySelector(':scope > summary .component-row');
+      if (summaryRow) {
+        const text = summaryRow.textContent.toLowerCase();
+        if (text.includes(query)) {
+          match = true;
+        }
+      }
+      // Check descendant details recursively
+      const childrenContainer = detailEl.querySelector(':scope > .children');
+      if (childrenContainer) {
+        const childDetails = Array.from(childrenContainer.children).filter(e => e.tagName.toLowerCase() === 'details');
+        let anyChildMatch = false;
+        childDetails.forEach(child => {
+          const childMatch = filterDetail(child, query);
+          if (childMatch) anyChildMatch = true;
+        });
+        match = match || anyChildMatch;
+      }
+      return match;
+    }
+  });
+  </script>
+
+  {# Toggle all script.  This listener toggles the open state of all <details> elements within the component tree.  When
+     every node is expanded, clicking will collapse all; otherwise it expands all.  The button label updates to reflect
+     the action. #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const toggleBtn = document.getElementById('toggle-all');
+    if (!toggleBtn) return;
+    toggleBtn.addEventListener('click', function(){
+      const detailsNodes = document.querySelectorAll('.component-tree details');
+      const allOpen = Array.from(detailsNodes).every(d => d.hasAttribute('open'));
+      detailsNodes.forEach(d => {
+        if (allOpen) {
+          d.removeAttribute('open');
+        } else {
+          d.setAttribute('open', '');
+        }
+      });
+      this.textContent = allOpen ? 'Esplodi tutto' : 'Comprimi tutto';
+    });
+  });
+  </script>
+
+  {#
+    After a stock load operation the browser is redirected back to this
+    page with a URL fragment of the form ``#part-<id>``.  When this
+    fragment is present we automatically open the corresponding
+    <details> element (if it exists) and scroll it into view.  This
+    ensures that an operator who added stock to a part or commercial
+    component remains focused on the same row rather than being returned
+    to the top of the listing.  Without this logic, the default page
+    load resets the scroll position and open states, making it difficult
+    to confirm the update.
+  #}
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#part-')) {
+      const id = hash.substring(1); // remove leading '#'
+      const target = document.getElementById(id);
+      if (target) {
+        // If the element is a <details>, ensure it is expanded.  This
+        // covers assembly trees where the part appears within a nested
+        // <details> element.
+        if (target.tagName.toLowerCase() === 'details') {
+          target.setAttribute('open', '');
+        }
+        // Scroll the element into view smoothly and center it in the viewport.
+        try {
+          target.scrollIntoView({behavior: 'smooth', block: 'center'});
+        } catch (err) {
+          // Fallback for browsers that do not support options object
+          target.scrollIntoView();
+        }
+        // Optionally apply a brief highlight to draw attention.  Add a
+        // temporary class that can be styled in base.css.  Remove it
+        // after a short timeout.
+        target.classList.add('highlight-row');
+        setTimeout(() => {
+          target.classList.remove('highlight-row');
+        }, 2000);
+      }
+    }
+  });
+  </script>
+
+</section>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Modifica componente - {{ product.name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Modifica componente</h2>
+  <p class="section-subtitle">Aggiorna la riga della distinta base per <strong>{{ product.name }}</strong>.</p>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Prodotto figlio</span>
+      <select name="child_id">
+        {% for p in possible_children %}
+          <option value="{{ p.id }}" {% if p.id == line.figlio_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Quantità</span>
+      <input type="number" name="quantity" step="0.0001" min="0.0001" value="{{ line.quantita }}">
+    </label>
+    <div style="display:flex; gap: 10px; margin-top:12px;">
+      <button class="btn primary" type="submit">Salva</button>
+      <a class="btn ghost" href="{{ url_for('products.detail', id=product.id) }}">Annulla</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

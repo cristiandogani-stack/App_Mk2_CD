@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Moduli - Admin{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Moduli</h2>
+  <div class="list glass">
+    {% for m in modules %}
+    <form method="post" class="list-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="module_id" value="{{ m.id }}">
+      <input type="hidden" name="action" value="toggle">
+      <div class="list-info">
+        <div class="list-title">{{ m.name }}</div>
+        <div class="list-subtitle">endpoint: <code>{{ m.endpoint }}</code></div>
+      </div>
+      <button class="btn {{ 'success' if m.enabled else 'ghost' }}">
+        {{ 'Abilitato' if m.enabled else 'Disabilitato' }}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+
+  {# Database administration controls #}
+  <hr class="divider" style="margin-top:24px; margin-bottom:16px;">
+  <h3 class="section-subtitle">Gestione database</h3>
+  <p class="muted" style="margin-bottom:8px;">Esporta, importa o resetta i dati di strutture e prodotti. Queste operazioni influenzano l’intero database.</p>
+  <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+    {# Reset button: posts to admin.reset_db #}
+    <form action="{{ url_for('admin.reset_db') }}" method="post" onsubmit="return confirm('Questa operazione eliminerà tutti i prodotti, strutture e file. Continuare?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn danger small">Resetta database</button>
+    </form>
+    {# Save button: posts to admin.save_db #}
+    <form action="{{ url_for('admin.save_db') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn small">Salva database</button>
+    </form>
+    {# Update button: navigates to upload form #}
+    <form action="{{ url_for('admin.update_db') }}" method="get">
+      <button type="submit" class="btn small">Aggiorna database</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

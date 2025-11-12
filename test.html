@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<!--
+  This file exists solely for development in this environment where the Flask
+  dependencies cannot be installed.  It allows us to load the compiled
+  stylesheet and script and verify that the dark/light/system toggle
+  behaves as expected without running a server.  The layout emulates a
+  simplified version of the application header.
+-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Theme toggle test</title>
+  <link rel="stylesheet" href="./app/static/css/styles.css">
+  <script defer src="./app/static/js/main.js"></script>
+  <style>
+    /* additional helpers to visualise the current theme */
+    body { padding: 40px; }
+    #currentTheme { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="app-header glass" style="position:static;">
+    <div class="brand">
+      <img src="./app/static/img/logo.svg" alt="Logo" class="logo">
+      <span class="brand-name">GestionApp Test</span>
+    </div>
+    <div class="header-actions" style="margin-left:auto;">
+      <button class="btn" id="themeToggle" title="Tema">
+        <span class="icon">🌓</span> Cambia tema
+      </button>
+    </div>
+  </div>
+  <div class="card glass" style="margin-top:20px; padding:20px;">
+    Questo è un pannello di test.  Clicca sul pulsante sopra per ciclare tra
+    le modalità <em>light</em>, <em>dark</em> e <em>system</em>.
+    <p id="currentTheme">Tema attuale: <code>system</code></p>
+  </div>
+  <script>
+    // update the displayed current theme value whenever the theme changes
+    document.addEventListener('DOMContentLoaded', () => {
+      const display = document.getElementById('currentTheme');
+      const updateDisplay = () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        display.textContent = `Tema attuale: ${current}`;
+      };
+      updateDisplay();
+      const btn = document.getElementById('themeToggle');
+      btn.addEventListener('click', () => setTimeout(updateDisplay, 0));
+    });
+  </script>
+</body>
+</html>

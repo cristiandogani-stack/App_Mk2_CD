@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Importa immagini{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Importa immagini</h2>
+  <p class="section-subtitle">Carica un archivio (.zip) contenente immagini da associare ai componenti. Il nome di ogni immagine deve corrispondere al codice <strong>Num. parte</strong> del componente (ad es. <em>001P023C03.jpg</em>).</p>
+  <form action="{{ url_for('admin.import_images') }}" method="post" enctype="multipart/form-data" style="max-width:480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field" style="margin-bottom:12px;">
+      <label for="image_archive" style="display:block; margin-bottom:4px;">Seleziona l'archivio immagini (.zip):</label>
+      <input type="file" id="image_archive" name="image_archive" accept=".zip" required style="display:block; width:100%;">
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" type="submit">Importa</button>
+      <a href="{{ url_for('admin.structures') }}" class="btn ghost">Annulla</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

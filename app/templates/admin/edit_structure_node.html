@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{#
+  Editing page for a single structure node.  This simplified version removes
+  the inline "definisci" panels and instead provides a link to the dedicated
+  defaults page.  Administrators can still modify the node's name, parent,
+  type and typology here.  The defaults (description, processing details,
+  purchase details, etc.) are edited on the separate page opened via the
+  "Definisci" button.
+#}
+
+{% block title %}Modifica nodo struttura – Argal{% endblock %}
+
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Modifica nodo struttura</h2>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Tipo</span>
+      <select name="type_id" required>
+        {% for t in types %}
+          <option value="{{ t.id }}" {% if node.type_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Padre (opzionale)</span>
+      <select name="parent_id">
+        <option value="" {% if not node.parent_id %}selected{% endif %}>— Nessuno —</option>
+        {% for t in types %}
+          <optgroup label="{{ t.name }}">
+            {% for n in nodes_by_type[t.id] %}
+              {# Skip the node itself to prevent self‑parenting #}
+              {% if n.id != node.id %}
+                <option value="{{ n.id }}" {% if node.parent_id == n.id %}selected{% endif %}>{{ n.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Nome nodo</span>
+      <input name="node_name" required value="{{ node.name }}">
+    </label>
+    <label class="field">
+      <span>Tipologia</span>
+      <div class="check-group">
+        <label style="margin-right:8px;">
+          <input type="radio" name="node_typology" value="assembly" {% if node.flag_assembly %}checked{% endif %}> Assieme
+        </label>
+        <label style="margin-right:8px;">
+          <input type="radio" name="node_typology" value="part" {% if node.flag_part %}checked{% endif %}> Parte
+        </label>
+        <label>
+          <input type="radio" name="node_typology" value="commercial" {% if node.flag_commercial %}checked{% endif %}> Parte a commercio
+        </label>
+      </div>
+    </label>
+    {# Link to dedicated defaults page for this node.  This page reuses the
+       product component edit interface to edit description, processing and
+       purchase details.  Flags are not displayed on that page. #}
+    <a class="btn secondary" href="{{ url_for('admin.define_structure_node_defaults', node_id=node.id) }}" style="margin-bottom:8px;">Definisci</a>
+    <div class="form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn primary" type="submit">Salva</button>
+      <a class="btn ghost" href="{{ url_for('admin.structures') }}">Annulla</a>
+      {# Provide an explicit delete action for this node.  Clicking this
+         button navigates to a confirmation page where the administrator
+         can confirm deletion of the node and all its children. #}
+      <a class="btn danger" href="{{ url_for('admin.delete_structure_node', node_id=node.id) }}">Elimina</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

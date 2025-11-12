@@ -1,0 +1,541 @@
+{% extends 'base.html' %}
+{% block title %}{{ product.name }} - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">{{ product.name }}</h2>
+  <a href="{{ url_for('products.index') }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
+  <div class="grid grid-2" style="align-items:flex-start;">
+    <div>
+      {# Display the main product image and, if available, the curve image side by side.
+         Use a flex container to align the two cards horizontally.  The curve
+         image enlarges on hover thanks to a CSS class defined below. #}
+      <div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+        <div class="card glass" style="width:250px; height:250px; display:flex; align-items:center; justify-content:center;">
+          {% if product.image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.image_filename) }}" alt="{{ product.name }}" style="max-width:100%; max-height:100%;">
+          {% else %}
+            <!-- Render a default placeholder when the product has no image -->
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        {% if product.curve_image_filename %}
+        <div class="card glass" style="width:250px; height:250px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.curve_image_filename) }}" alt="Curve caratteristiche" class="curve-image" style="max-width:100%; max-height:100%; cursor:zoom-in;">
+        </div>
+        {% endif %}
+      </div>
+
+      {# -------------------------------------------------------------
+         Product‑level document upload and listing
+
+         This card allows users to upload general documents for the
+         product.  Files are grouped into categories based on the
+         ``doc_type`` selection and saved under
+         ``static/documents/<product>/<doc_type>``.  Below the upload
+         form, any existing documents are displayed grouped by their
+         category.  A CSRF token is included to satisfy Flask‑WTF.
+      #}
+      <div class="glass" style="margin-top:12px; padding:12px;">
+        <h4 style="margin:0 0 8px 0;">Carica documenti</h4>
+        <form method="post" action="{{ url_for('products.upload_product_documents', id=product.id) }}" enctype="multipart/form-data" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="doc_type" style="flex:1;">
+            <option value="qualita">Modulo Cert. qualità</option>
+            <option value="manuale">Manuale</option>
+            <option value="disegni">Disegni</option>
+            <option value="altro" selected>Altro</option>
+          </select>
+          <input type="file" name="product_docs" multiple style="flex:2;">
+          <button class="btn primary small" type="submit">Carica</button>
+        </form>
+        <p class="muted" style="margin-top:8px;">I documenti caricati sono visualizzati nel box sotto.</p>
+      </div>
+    </div>
+    <div>
+      {# Product specifications: display when available.  The description box has
+         been removed per the latest requirements. #}
+      {# Display product specifications in a glass card.  Only the relevant
+         attributes are shown: Fluid inlet, Flow rate, Dimensioni and the
+         total weight of components.  When a value is missing a dash
+         placeholder is used to maintain a consistent layout. #}
+      <div class="glass" style="padding:12px; margin-top:4px; font-size:0.9em;">
+        <p><strong>Fluid inlet</strong>
+          {% if product.fluid_in_let %}
+            {{ product.fluid_in_let }} BSPP
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Layer inlet</strong>
+          {% if product.layer_in_lett %}
+            {{ product.layer_in_lett }} BSPP
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Noise</strong>
+          {% if product.noise is not none %}
+            {{ product.noise }} dB(A)
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Flow rate</strong>
+          {% if product.flow_rate is not none %}
+            {{ product.flow_rate }} L/m
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Massima pressione</strong>
+          {% if product.max_pressure_from is not none or product.max_pressure_to is not none %}
+            {% if product.max_pressure_from is not none %}
+              {% if product.max_pressure_to is not none %}
+                Da {{ product.max_pressure_from }} a {{ product.max_pressure_to }} bar
+              {% else %}
+                Da {{ product.max_pressure_from }} bar
+              {% endif %}
+            {% elif product.max_pressure_to is not none %}
+              Fino a {{ product.max_pressure_to }} bar
+            {% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        <p><strong>Dimensioni</strong>
+          {% if product.dimension_x is not none or product.dimension_y is not none or product.dimension_z is not none %}
+            {{ product.dimension_x if product.dimension_x is not none else '—' }} × {{ product.dimension_y if product.dimension_y is not none else '—' }} × {{ product.dimension_z if product.dimension_z is not none else '—' }} mm
+          {% else %}
+            —
+          {% endif %}
+        </p>
+        {# List of uploaded documents displayed below the specifications. #}
+        {% set doc_label_map = {'qualita':'Qualità', 'manuale':'Manuale', 'disegni':'Disegni', 'altro':'Altro'} %}
+        {% set ns_docs = namespace(count=0) %}
+        {% for files in product_documents.values() %}
+          {% set ns_docs.count = ns_docs.count + (files | length) %}
+        {% endfor %}
+        {% if ns_docs.count > 0 %}
+        <hr style="margin:8px 0;">
+        <p><strong>Documenti</strong></p>
+          {% for folder, files in product_documents.items() %}
+            {% if files | length > 0 %}
+            <div class="doc-category" style="margin-top:6px;">
+              <strong>{{ doc_label_map.get(folder, folder) }}:</strong>
+              <ul style="margin:4px 0 0 12px; padding:0; list-style:disc;">
+                {% for file in files %}
+                  <li style="margin-left:1em; display:flex; align-items:center; gap:4px;">
+                    <a href="{{ url_for('products.download_file', filename=file.path) }}" download>{{ file.name }}</a>
+                    {# Delete button: uses a form with CSRF token and confirmation prompt.  The `next` field ensures the user is redirected back to this page after deletion. #}
+                    <form method="post" action="{{ url_for('products.delete_document') }}" style="display:inline; margin:0;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="filepath" value="{{ file.path }}">
+                      <input type="hidden" name="next" value="{{ request.full_path }}">
+                      <button type="submit" class="btn ghost small" style="padding:0 4px; font-size:12px;" onclick="return confirm('Sei sicuro di voler eliminare questo documento?');">✖</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <p class="muted" style="margin-top:8px;">Nessun documento caricato.</p>
+        {% endif %}
+      </div>
+      <div style="margin-top:12px;">
+        <a href="{{ url_for('products.edit', id=product.id) }}" class="btn ghost small">Modifica prodotto</a>
+        {# Offer a single-click download of all component images.  This uses the
+           newly added products.download_images endpoint to bundle every image
+           associated with this product into a ZIP archive.  The button appears
+           alongside the "Modifica prodotto" link. #}
+        <a href="{{ url_for('products.download_images', product_id=product.id) }}" class="btn ghost small" style="margin-left:8px;">Scarica immagini</a>
+      </div>
+      {# Barra di ricerca componenti: consente di cercare e raggiungere un componente
+         all'interno dell'albero dei componenti del prodotto.  Suggerisce i
+         componenti attraverso /products/search_suggestions e reindirizza alla
+         pagina dettaglio con il parametro highlight impostato.  La stessa
+         barra permette di cercare componenti appartenenti ad altri prodotti. #}
+      {# la barra di ricerca componenti è stata spostata sopra la sezione
+         "Componenti del prodotto", quindi questo blocco viene rimosso. #}
+    </div>
+  </div>
+  <hr class="divider" style="margin:20px 0;">
+  {# Barra di ricerca dei componenti: spostata qui sopra la lista dei
+     componenti del prodotto.  Il contenitore utilizza flexbox per
+     centrare il modulo sullo schermo.  La barra consente di cercare
+     componenti all'interno di questo prodotto (e di altri prodotti) e
+     reindirizza alla pagina con il parametro "highlight" impostato.  Le
+     dimensioni massime del modulo sono limitate a 400px per evitare
+     eccessiva larghezza. #}
+  <div style="display:flex; justify-content:center; margin-bottom:12px;">
+    <form id="product-search-form" class="product-search" style="max-width:400px; width:100%; position:relative;">
+      <input id="product-search-input" type="search" placeholder="Cerca componenti…" autocomplete="off" style="width:100%; padding:6px 10px; border-radius:8px; border:1px solid var(--glass-stroke); background: var(--card); color: var(--text);">
+      <div id="product-search-results" class="product-search-results" style="display:none;"></div>
+    </form>
+  </div>
+
+  {# Intestazione e struttura dell'elenco dei componenti.  La sezione
+     "Assemblaggi e parti" è stata rimossa e si passa direttamente alla
+     lista dei componenti. #}
+  <h3 class="card-title">Componenti del prodotto</h3>
+  {% if rows_tree|length == 0 %}
+    <p class="muted">Nessuna struttura associata a questo prodotto.</p>
+  {% else %}
+    {#
+      Renderizza i componenti del prodotto come un albero di elementi
+      espandibili.  Ogni nodo è rappresentato da un elemento <details>
+      che contiene un <summary> con le principali informazioni (numero,
+      immagine, codice, descrizione, categoria, quantità e azioni) e,
+      se il nodo ha figli, un contenitore che ricorsivamente include
+      altri nodi.  Questo approccio evita pulsanti di espansione
+      sovrapposti e fornisce un'interfaccia più fluida per navigare
+      la struttura multi‑livello del prodotto.
+    #}
+
+    {% macro render_component_node(node) %}
+      <details class="component-node" {% if not node.children %}data-leaf="true"{% endif %}>
+        <summary>
+          <div class="component-row" {% if node.component %}id="component-{{ node.component.id }}"{% endif %}>
+            <div class="col-number">{{ node.number }}</div>
+            <div class="col-image">
+            {% if node.component and node.component.image_filename %}
+                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + node.component.image_filename) }}" alt="{{ node.structure.name }}">
+            {% else %}
+                {# Show a gear icon as a placeholder when no image is defined for this component.  Use a white/grey icon via CSS filters for better contrast. #}
+                <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ node.structure.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+            {% endif %}
+            </div>
+            <div class="col-code">{{ node.structure.name }}</div>
+            <div class="col-desc">
+              {#
+                Display a human‑readable description for each component node.
+
+                The previous implementation only fell back to the structure type
+                description when a product component had neither a description
+                nor notes.  When adding new nodes manually, the description is
+                often stored on the underlying structure (not on the type),
+                which resulted in the "Componenti del prodotto" table
+                showing the type description instead of the one defined for
+                the node.  To make the value shown here consistent with
+                what appears in the component editing form, we now check
+                these fields in order:
+
+                  1. ``node.component.description`` – explicit description on the
+                     ProductComponent.
+                  2. ``node.component.notes_plain`` – legacy notes used as description
+                     fallback for imported BOMs.
+                  3. ``node.structure.description`` – per‑node description
+                     defined in the structures management section.
+                  4. ``node.structure.type.description`` or, as a last resort,
+                     the type name.
+
+                This ensures that manually defined node descriptions are
+                displayed correctly and that the description matches the
+                editable field in the component detail page.
+              #}
+              {% if node.component and node.component.description %}
+                {{ node.component.description }}
+              {% elif node.component and node.component.notes_plain %}
+                {{ node.component.notes_plain }}
+              {% elif node.structure.description %}
+                {{ node.structure.description }}
+              {% else %}
+                {{ node.structure.type.description or node.structure.type.name }}
+              {% endif %}
+            </div>
+            <div class="col-revision">{{ node.structure.revision_label }}</div>
+            <div class="col-category">
+              {% if node.structure.flag_assembly %}Assieme{% elif node.structure.flag_part %}Parte{% elif node.structure.flag_commercial %}Parte a commercio{% else %}-{% endif %}
+            </div>
+            <div class="col-qty">
+              {% if node.component %}
+                {{ node.component.quantity }}
+              {% else %}
+                1
+              {% endif %}
+            </div>
+            <div class="col-actions">
+              {#
+                Reduce the gap between the action buttons in the component tree.
+                A 4px gap was making the "Modifica", "Sostituisci" and "Elimina"
+                buttons feel too far apart.  Set the gap to 2px and avoid wrapping
+                so that the buttons appear almost attached, as requested.
+              #}
+              <div class="btn-group" style="display:flex; gap:2px; flex-wrap:nowrap;">
+                {#
+                  Always direct the user to the unified component editing page.  When a
+                  ProductComponent exists for this node, link to the products.component_detail
+                  route so that the view can redirect to the admin definition page with
+                  a return_to parameter pointing back to this product.  When no
+                  ProductComponent exists (e.g. a new node has been added manually
+                  but not yet associated with this product), link directly to the
+                  admin.define_structure_node_defaults route.  In this case we pass
+                  return_to back to the product detail page so the user can return
+                  after editing.  This ensures consistent behaviour between
+                  imported and manually added nodes.
+                #}
+                {% if node.component %}
+                  <a href="{{ url_for('products.component_detail', product_id=product.id, component_id=node.component.id, return_to=url_for('products.detail', id=product.id, highlight=node.component.id)) }}" class="btn ghost small">Modifica</a>
+                {% else %}
+                  <a href="{{ url_for('admin.define_structure_node_defaults', node_id=node.structure.id, return_to=url_for('products.detail', id=product.id)) }}" class="btn ghost small">Modifica</a>
+                {% endif %}
+                {#
+                  "Sostituisci" button hidden
+
+                  The product detail page previously displayed a "Sostituisci" (Replace)
+                  action for every component node in the component tree.  At the
+                  client's request this button should no longer be visible.  We
+                  comment it out entirely here rather than relying on CSS alone
+                  so that no empty anchor is rendered.  This keeps the markup
+                  cleaner and avoids confusion when inspecting the DOM.  If in
+                  the future a replacement action is required, this block can
+                  easily be re‑enabled by removing the surrounding Jinja comment.
+                #}
+                {# <a href="#" class="btn ghost small">Sostituisci</a> #}
+                {# Show the delete button only when a ProductComponent is associated
+                   with this node.  Use an explicit check against ``none`` to avoid
+                   issues where Jinja may treat objects as falsy. #}
+                {#
+                  Show the delete button only when a ProductComponent instance
+                  exists for this node.  Use explicit dictionary access to
+                  avoid ambiguity between attribute and key lookups.  When no
+                  component exists the dash is shown instead.
+                #}
+                {% if node['component'] is not none %}
+                  <form method="post" action="{{ url_for('products.delete_component', product_id=product.id, component_id=node['component'].id) }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn danger small" type="submit" onclick="return confirm('Eliminare questo componente?');">Elimina</button>
+                  </form>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </summary>
+        {% if node.children %}
+        <div class="children">
+          {% for child in node.children %}
+            {{ render_component_node(child) }}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+    {% endmacro %}
+
+    {# Header row showing column names for the component tree.  This bar
+       clarifies the meaning of each column (numero, immagine, nome, descrizione,
+       categoria, quantità, azioni).  It uses the same grid layout as
+       the component rows for consistent alignment. #}
+    <div class="component-header">
+      <div class="component-row header-row">
+        <div class="col-number">N°</div>
+        <div class="col-image">Immagine</div>
+        <div class="col-code">Nome</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Categoria</div>
+        <div class="col-qty">Quantità</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {% for root in rows_tree %}
+        {{ render_component_node(root) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+<script>
+// Evidenzia un nodo nell'albero della distinta componenti quando presente
+// un parametro "highlight" nell'URL.  Apre automaticamente tutti i
+// pannelli <details> necessari per rendere visibile il nodo e applica
+// una classe CSS per evidenziarlo temporaneamente.
+document.addEventListener('DOMContentLoaded', function(){
+  // Gestione evidenziazione tramite parametro highlight
+  const params = new URLSearchParams(window.location.search);
+  const highlight = params.get('highlight');
+  if (highlight) {
+    const target = document.getElementById('component-' + highlight);
+    if (target) {
+      // Apri tutti i pannelli <details> antenati per rendere visibile il nodo
+      let parent = target.closest('details');
+      while (parent) {
+        parent.open = true;
+        parent = parent.parentElement && parent.parentElement.closest('details');
+      }
+      target.classList.add('highlight');
+      // Scorri il nodo evidenziato al centro della vista
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function(){
+        target.classList.remove('highlight');
+      }, 4000);
+    }
+  }
+
+  // Gestione ricerca componenti nella pagina prodotto.  Suggerisce
+  // componenti con immagini e permette di navigare direttamente alla
+  // riga interessata.  Se il componente appartiene al prodotto
+  // attuale, la pagina viene ricaricata con il parametro highlight;
+  // altrimenti si reindirizza alla pagina del prodotto contenente il
+  // componente.
+  const searchForm = document.getElementById('product-search-form');
+  const searchInput = document.getElementById('product-search-input');
+  const resultsContainer = document.getElementById('product-search-results');
+  let suggestionMap = {};
+  // Memorizza l'ID del prodotto corrente per confrontarlo con i
+  // suggerimenti restituiti dal server.  Utilizziamo il valore
+  // direttamente dal contesto Jinja renderizzato a runtime.
+  const currentProductId = {{ product.id }};
+  if (searchInput && resultsContainer && searchForm) {
+    searchInput.addEventListener('input', function(){
+      const query = searchInput.value.trim();
+      if (query.length < 2) {
+        resultsContainer.innerHTML = '';
+        resultsContainer.style.display = 'none';
+        suggestionMap = {};
+        return;
+      }
+      // Pass the current product ID so that suggestions are limited to
+      // components belonging to this product.  Without specifying a
+      // product_id the server would return suggestions across all products.
+      fetch(`/products/search_suggestions?product_id=${currentProductId}&q=${encodeURIComponent(query)}`)
+        .then(function(resp){ return resp.json(); })
+        .then(function(data){
+          suggestionMap = {};
+          resultsContainer.innerHTML = '';
+          if (data.length > 0) {
+            resultsContainer.style.display = 'block';
+          } else {
+            resultsContainer.style.display = 'none';
+          }
+          data.forEach(function(item){
+            const label = item.label;
+            suggestionMap[label] = item;
+            const div = document.createElement('div');
+            div.classList.add('search-suggestion');
+            // Thumbnail
+            const img = document.createElement('img');
+            if (item.image) {
+              img.src = item.image;
+            } else {
+              img.src = '';
+            }
+            img.alt = '';
+            // Testo
+            const span = document.createElement('span');
+            span.textContent = label;
+            div.appendChild(img);
+            div.appendChild(span);
+            div.addEventListener('click', function(){
+              if (item.product_id === currentProductId) {
+                // Resta sulla stessa pagina e passa highlight
+                const url = `?highlight=${item.component_id}`;
+                window.location.href = url;
+              } else {
+                const url = `/products/${item.product_id}?highlight=${item.component_id}`;
+                window.location.href = url;
+              }
+            });
+            resultsContainer.appendChild(div);
+          });
+        })
+        .catch(function(err){
+          console.error('Errore durante il recupero dei suggerimenti di ricerca:', err);
+        });
+    });
+    // Gestione invio con tasto Enter: se l'utente preme Invio
+    // mentre digita, viene selezionato il primo suggerimento
+    searchForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      const value = searchInput.value.trim();
+      if (value && suggestionMap[value]) {
+        const item = suggestionMap[value];
+        if (item.product_id === currentProductId) {
+          const url = `?highlight=${item.component_id}`;
+          window.location.href = url;
+        } else {
+          const url = `/products/${item.product_id}?highlight=${item.component_id}`;
+          window.location.href = url;
+        }
+      } else {
+        // Se non esiste corrispondenza esatta, reindirizza al primo
+        // suggerimento se presente.
+        const keys = Object.keys(suggestionMap);
+        if (keys.length > 0) {
+          const first = suggestionMap[keys[0]];
+          if (first.product_id === currentProductId) {
+            const url2 = `?highlight=${first.component_id}`;
+            window.location.href = url2;
+          } else {
+            const url2 = `/products/${first.product_id}?highlight=${first.component_id}`;
+            window.location.href = url2;
+          }
+        }
+      }
+    });
+    // Chiudi il menu dei suggerimenti quando si clicca al di fuori del form
+    document.addEventListener('click', function(ev){
+      if (!searchForm.contains(ev.target)) {
+        resultsContainer.style.display = 'none';
+      }
+    });
+  }
+});
+</script>
+<style>
+/* Enlarge curve image on hover.  The position relative ensures the
+   image grows over neighbouring elements without affecting layout. */
+.curve-image:hover {
+  /* no transform here; handled by overlay */
+}
+/* Fullscreen overlay for the curve image */
+.curve-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.curve-overlay img {
+  max-width: 90%;
+  max-height: 90%;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  cursor: zoom-out;
+}
+</style>
+
+{# Overlay container for the curve image.  When the user hovers over
+   the small curve thumbnail, this overlay becomes visible and
+   displays the full-size image.  Clicking anywhere on the overlay
+   hides it. #}
+{% if product.curve_image_filename %}
+<div id="curve-overlay" class="curve-overlay">
+  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.curve_image_filename) }}" alt="Curve caratteristiche">
+</div>
+{% endif %}
+
+<script>
+// Attach event handlers to display the curve image in a fullscreen overlay.
+document.addEventListener('DOMContentLoaded', function () {
+  var thumbnail = document.querySelector('.curve-image');
+  var overlay = document.getElementById('curve-overlay');
+  if (thumbnail && overlay) {
+    // Show overlay when the user clicks on the thumbnail
+    thumbnail.addEventListener('click', function () {
+      overlay.style.display = 'flex';
+    });
+    // Hide overlay when the user clicks on it
+    overlay.addEventListener('click', function () {
+      overlay.style.display = 'none';
+    });
+  }
+});
+</script>
+{% endblock %}

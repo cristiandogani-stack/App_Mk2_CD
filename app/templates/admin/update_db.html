@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Aggiorna database{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Aggiorna database</h2>
+  <p class="section-subtitle">Carica un file di backup generato con l’operazione <em>Salva database</em> per ripristinare strutture, prodotti e allegati.</p>
+  <form action="{{ url_for('admin.update_db') }}" method="post" enctype="multipart/form-data" style="max-width:480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field" style="margin-bottom:12px;">
+      <label for="db_file" style="display:block; margin-bottom:4px;">Seleziona il file (.zip):</label>
+      <input type="file" id="db_file" name="db_file" accept=".zip" required style="display:block; width:100%;">
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" type="submit">Carica e aggiorna</button>
+      <a href="{{ url_for('admin.modules') }}" class="btn ghost">Annulla</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

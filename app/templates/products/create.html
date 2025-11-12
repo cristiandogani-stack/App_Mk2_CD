@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Nuovo prodotto - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Nuovo prodotto</h2>
+  <p class="section-subtitle">Definisci un nuovo prodotto e seleziona le strutture che lo compongono. Puoi scegliere più nodi per tipo e specificarne la quantità.</p>
+  <form method="post" class="form" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>Nome prodotto</span>
+      <input name="name" required placeholder="es. Prodotto ABC" value="{{ request.form.get('name', '') }}">
+    </label>
+    <label class="field">
+      <span>Descrizione</span>
+      <textarea name="description" rows="3" placeholder="Opzionale">{{ request.form.get('description', '') }}</textarea>
+    </label>
+    <label class="field">
+      <span>Immagine prodotto</span>
+      <input type="file" name="image" accept="image/*">
+    </label>
+    <div class="field">
+      <span>Componenti</span>
+      {% if types|length == 0 %}
+        <p class="muted">Non esistono tipi di struttura. Crea prima dei tipi nella sezione Strutture.</p>
+      {% else %}
+        <p class="muted" style="margin-bottom:6px;">Seleziona le strutture desiderate. Puoi espandere ogni categoria per vedere i nodi disponibili.</p>
+        <div class="accordion-list">
+          {% for t in types %}
+            <details class="accordion-item">
+              <summary><strong>{{ t.name }}</strong>{% if t.description %} – <span class="muted">{{ t.description }}</span>{% endif %}</summary>
+              <div class="accordion-content">
+                {% set nodes = nodes_by_type.get(t.id) %}
+                {% if nodes|length == 0 %}
+                  <p class="muted">Nessun nodo definito per questo tipo.</p>
+                {% else %}
+                  <ul class="component-list">
+                    {% for n in nodes %}
+                      <li>
+                        <label class="checkbox">
+                          <input type="checkbox" name="components" value="{{ n.id }}">
+                          <span>{{ n.name }}</span>
+                          {% if n.parent %}<small class="muted">Padre: {{ n.parent.name }}</small>{% endif %}
+                        </label>
+                        <input type="number" min="1" name="qty_{{ n.id }}" value="1" class="qty-input" title="Quantità"/>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            </details>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <button class="btn primary" type="submit">Crea prodotto</button>
+  </form>
+</section>
+{% endblock %}

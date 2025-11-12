@@ -1,0 +1,11 @@
+127.0.0.1:5000
+
+# Questo file permette di specificare l'host e la porta su cui avviare
+# l'applicazione GestionApp.  Per cambiare l'indirizzo IP o la porta,
+# modificare la prima riga nel formato ``IP:porta``.  Ad esempio:
+#
+#   0.0.0.0:8000
+#
+# Se viene specificato solo l'indirizzo IP senza due punti e porta,
+# sarà usata la porta di default (5000).  Se il file viene lasciato
+# vuoto o cancellato, l'applicazione partirà su 127.0.0.1:5000.

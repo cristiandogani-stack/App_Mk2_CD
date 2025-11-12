@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+
+{#
+  Parts listing for a single product.
+
+  This page shows a flat list of all mechanical parts (non‑assembly,
+  non‑commercial) that appear anywhere in the selected product's bill of
+  materials.  Each part is listed once regardless of how many times it
+  appears in the BOM.  A navigation bar allows switching between the
+  product overview and other specialised views.  A simple search box
+  filters the list in real time by code or description.
+#}
+
+{% block title %}Magazzino – {{ product.name }}: Parti{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button: go back to the referrer if available or to the product detail. #}
+  {# Always return to the product detail page rather than using the HTTP referrer. #}
+  <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  <h2 class="section-title">Magazzino: {{ product.name }} – Parti</h2>
+  {# Tab navigation between product views. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    {# Removed "Prodotto" tab from navigation. #}
+    <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+    <a href="{{ url_for('inventory.product_parts', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+    <a href="{{ url_for('inventory.product_commercial', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+    {# Archive tabs: separate component and assembly archives. #}
+    <a href="{{ url_for('inventory.product_archive_view', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Archivio&nbsp;componenti</a>
+    <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product.id) }}"
+       class="btn small{{ ' primary' if active_tab == 'archive_assiemi' else ' ghost' }}">Archivio&nbsp;assiemi</a>
+  </div>
+
+  {# Search bar to filter the parts list.  Center the search box horizontally using flexbox. #}
+  <div style="margin-bottom:12px; display:flex; justify-content:center;">
+    <input type="text" id="parts-search" class="input" placeholder="Cerca..." style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
+  </div>
+
+  {#
+    Booking button for the finished product.
+
+    Although this view focuses on mechanical parts, operators may need
+    to reserve the finished product without navigating back to the
+    overview.  This button invokes the same reservation helper used on
+    the product detail and overview pages.  The ``boxType`` is set to
+    ``PRODOTTO`` and the component code is the product name, which
+    causes the API to generate DataMatrix codes with ``T=PRODOTTO``.
+    Once the reservation is created the browser redirects to the
+    production box view where the build can be completed.
+  #}
+  {# Removed top-level Prenota prodotto button. #}
+
+  {% if parts|length == 0 %}
+    <p class="muted">Nessuna parte definita per questo prodotto.</p>
+  {% else %}
+    <div class="component-header">
+      <div class="component-row">
+        <div class="col-number">#</div>
+        <div class="col-image">Img</div>
+        <div class="col-code">Codice</div>
+        <div class="col-desc">Descrizione</div>
+        <div class="col-revision">Revisione</div>
+        <div class="col-category">Categoria</div>
+        <div class="col-qty">Stock</div>
+        <div class="col-actions">Azioni</div>
+      </div>
+    </div>
+    <div class="component-tree">
+      {% for part in parts %}
+      <div id="part-{{ part.id }}" class="component-row glass" style="border: 1px solid var(--glass-stroke); border-radius: var(--radius); margin-bottom: 8px; padding: 10px 12px;">
+        <div class="col-number">{{ loop.index }}</div>
+        <div class="col-image">
+          {% if part.display_image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="max-width:100%; max-height:80px; object-fit:contain; filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="col-code">{{ part.name }}</div>
+        <div class="col-desc">{{ part.description or '—' }}</div>
+        <div class="col-revision">{{ part.revision_label }}</div>
+        <div class="col-category">Parte</div>
+        <div class="col-qty">{{ (part.quantity_in_stock or 0)|int }}</div>
+        <div class="col-actions">
+          {# Prenota this specific part.  Pass the product id along with an
+             override for boxType and componentCode so that the API
+             generates the correct DataMatrix for this component.  Use
+             |tojson to safely embed the part name as a JS string. #}
+          {#
+            Use a single‑quoted onclick attribute for the Prenota button.  The
+            third argument is generated by the ``tojson`` filter which
+            produces a quoted JSON literal.  Wrapping the entire attribute in
+            single quotes prevents those quotes from breaking the attribute.
+          #}
+          <button class="btn primary small" type="button" onclick='prenota({{ product.id }}, "PARTE", {{ part.name|tojson }})'>Prenota</button>
+          {# Show loaded items for this part.  Use the product id because
+             loaded items are stored by product (not by individual part). #}
+          {# Pass the part name to the apri function so the modal shows only loaded items for this part #}
+          <button class="btn ghost small" type="button" onclick='apri({{ product.id }}, {{ part.name|tojson }})'>Apri</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <script>
+  // Filter the parts table based on the user's query.  Rows whose text
+  // content does not match the search string are hidden.
+  document.addEventListener('DOMContentLoaded', function(){
+    const input = document.getElementById('parts-search');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const query = input.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('.component-tree .component-row.glass');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = (query === '' || text.includes(query)) ? '' : 'none';
+      });
+    });
+  });
+  </script>
+
+  {# Global variables and reservation helpers #}
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      window.currentProductId = {{ product.id }};
+    });
+    /**
+     * Create a reservation for the given product.  Optional parameters
+     * ``boxType`` and ``componentCode`` allow overriding the type of
+     * production box and the component name used in the DataMatrix.
+     * When provided, these values are sent to the API so that parts
+     * and commercial components generate correct codes rather than
+     * inheriting the root component of the product.
+     */
+    function prenota(productId, boxType, componentCode) {
+      const qtyStr = prompt('Quantità da prenotare', '1');
+      if (qtyStr === null) return;
+      const qty = parseInt(qtyStr, 10);
+      if (!qty || qty <= 0) {
+        alert('Quantità non valida');
+        return;
+      }
+      // Build request payload.  Always include productId and quantity.
+      const payload = { productId: productId, quantity: qty, note: '' };
+      if (boxType) payload.boxType = boxType;
+      if (componentCode) payload.componentCode = componentCode;
+      fetch('/api/reservations', {
+        method:'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(res => { if (!res.ok) throw new Error('Errore nella creazione della prenotazione'); return res.json(); })
+        .then(data => {
+          const codes = data.items.map(i => i.datamatrix).join(', ');
+          alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+          if (data.productionBoxId) {
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
+          }
+        })
+        .catch(err => { alert('Si è verificato un errore: ' + err.message); console.error(err); });
+    }
+    /*
+     * Apri: mostra la lista dei componenti caricati per un dato prodotto.
+     * Se viene fornito un codice componente, filtra i risultati mostrando
+     * solo i codici DataMatrix con un campo P= corrispondente a quel nome.
+     */
+    function apri(productId, componentCode) {
+      fetch('/api/products/' + productId + '/loaded')
+        .then(res => {
+          if (!res.ok) throw new Error('Errore nella chiamata API');
+          return res.json();
+        })
+        .then(data => {
+          const items = data.items || [];
+          // Filter items by component code if provided
+          let filtered = items;
+          if (componentCode) {
+            const code = componentCode.toString();
+            filtered = items.filter(it => {
+              const parts = it.datamatrix ? it.datamatrix.split('|') : [];
+              for (const p of parts) {
+                if (p.startsWith('P=')) {
+                  return p.slice(2) === code;
+                }
+              }
+              return false;
+            });
+          }
+          const modal = document.getElementById('loadedModal');
+          const content = document.getElementById('loadedItemsContent');
+          let html = '';
+          if (filtered.length === 0) {
+            html = '<p class="muted">Nessun componente caricato per questo elemento.</p>';
+          } else {
+            html += '<table class="glass" style="width:100%; border-collapse:collapse;">';
+            html += '<thead><tr><th>#</th><th>DataMatrix</th><th>Box</th><th>Stato</th></tr></thead><tbody>';
+            filtered.forEach((it, idx) => {
+              html += '<tr style="border-bottom:1px solid var(--glass-stroke);">';
+              html += '<td style="padding:6px;">' + (idx + 1) + '</td>';
+              html += '<td style="padding:6px; font-family:monospace;">' + it.datamatrix + '</td>';
+              html += '<td style="padding:6px;">' + (it.boxId || '—') + '</td>';
+              html += '<td style="padding:6px;">' + (it.status || 'COMPLETATO') + '</td>';
+              html += '</tr>';
+            });
+            html += '</tbody></table>';
+          }
+          content.innerHTML = html;
+          modal.style.display = 'block';
+        })
+        .catch(err => {
+          alert('Si è verificato un errore: ' + err.message);
+          console.error(err);
+        });
+    }
+
+    // Close the loaded items modal
+    function closeLoadedModal() {
+      const modal = document.getElementById('loadedModal');
+      if (modal) modal.style.display = 'none';
+    }
+  </script>
+
+  {# Modal for displaying loaded components #}
+  <div id="loadedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; overflow:auto;">
+    <div style="background:var(--glass-bg); margin:60px auto; padding:20px; border-radius:12px; max-width:600px; width:90%; position:relative;">
+      <h3 style="margin-top:0;">Componenti caricati</h3>
+      <div id="loadedItemsContent"></div>
+      <div style="text-align:right; margin-top:12px;">
+        <button class="btn primary small" onclick="closeLoadedModal()">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

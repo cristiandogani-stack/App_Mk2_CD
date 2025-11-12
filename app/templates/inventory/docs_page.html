@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+
+{#
+  Detailed document page for a DataMatrix code.
+
+  This view displays all documents associated with a specific component or assembly
+  DataMatrix code.  It also renders the DataMatrix as an image when possible
+  and provides a download link for the image.  A back button returns the user
+  to the appropriate archive (components or assemblies) based on the
+  ``from_page`` parameter passed from the calling view.
+#}
+
+{#
+  The page title includes the human readable component name rather than the raw
+  DataMatrix payload.  ``component_name`` is provided by the view and falls
+  back to the component code when no description is available.
+#}
+{% block title %}Documenti – {{ component_name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  {# Back button: return to the appropriate archive view depending on the source. #}
+  {% if from_page == 'assemblies' %}
+    <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product_id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  {% else %}
+    <a href="{{ url_for('inventory.product_archive_view', product_id=product_id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  {% endif %}
+  {# The heading mirrors the page title, using the component name instead of
+     the full DataMatrix payload.  This provides a clearer context for the
+     user. #}
+  <h2 class="section-title">Documenti – {{ component_name }}</h2>
+  <div style="margin-bottom:16px;">
+    <p><strong>DataMatrix:</strong></p>
+    {#
+      Render the DataMatrix/QR code on the client using the DATAMatrix
+      library.  A container holds the payload via a data attribute and
+      is later populated with an SVG.  A download button is provided
+      with a default fallback target using the server‑generated image
+      when available.  When the library loads successfully the
+      download link is updated to point at a high‑resolution PNG.
+    #}
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div id="dm-image-container"
+           data-code="{{ dm_code }}"
+           style="border:1px solid var(--glass-stroke); background:#fff; padding:4px; border-radius:4px; width:120px; height:120px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+        {% if not image_data %}
+          {# When no pre‑rendered image is available and the script fails,
+             fall back to showing the raw DataMatrix text. #}
+          <span style="font-family:monospace; font-size:10px; text-align:center; word-break:break-all;">{{ dm_code }}</span>
+        {% endif %}
+      </div>
+      {# Initialise the download link with the server fallback when
+         available.  If ``image_data`` is empty the href will be set
+         via JavaScript after generating the code. #}
+      <a id="dm-download-link"
+         href="{% if image_data %}data:image/png;base64,{{ image_data }}{% else %}#{% endif %}"
+         download="datamatrix.png"
+         class="btn primary small"
+         style="min-width:max-content;">
+        Scarica DataMatrix
+      </a>
+    </div>
+  </div>
+  <h3 style="margin-top:24px; margin-bottom:12px;">Elenco documenti</h3>
+  {#
+    Documents are grouped by category.  ``docs_by_category`` is a mapping
+    provided by the view where each key corresponds to a category (such as
+    "qualita", "disegni", "manuale", "step", "tavola" etc.) and the value is a
+    list of document dictionaries with ``name`` and ``url`` fields.  When no
+    documents exist, a fallback message is displayed.
+  #}
+  {% if docs_by_category and docs_by_category|length > 0 %}
+    {% for category, items in docs_by_category.items() %}
+      <h4 style="margin-top:12px; margin-bottom:8px;">{{ category }}</h4>
+      <div class="docs-list" style="display:flex; flex-direction:column; gap:8px;">
+        {% for doc in items %}
+          <div style="display:flex; align-items:center; justify-content:space-between; border:1px solid var(--glass-stroke); padding:8px 12px; border-radius:8px; background:var(--glass-bg);">
+            <span style="word-break:break-word;">{{ doc.name }}</span>
+            {% if doc.url %}
+              <a href="{{ doc.url }}" class="btn primary small" download>Scarica</a>
+            {% else %}
+              <span class="btn disabled small" style="opacity:0.6; pointer-events:none;">Non disponibile</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Nessun documento disponibile.</p>
+  {% endif %}
+</section>
+  {#
+    Include the DataMatrix rendering library and generate the barcode
+    on page load.  When the DATAMatrix library is available we
+    construct a high‑resolution SVG for the code and rasterise it
+    into a PNG to enable a crisp download.  If the library fails,
+    the fallback image from the server remains in place.
+  #}
+  <script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('dm-image-container');
+    const downloadLink = document.getElementById('dm-download-link');
+    if (!container) return;
+    const code = container.getAttribute('data-code');
+    if (!code) return;
+    try {
+      if (typeof DATAMatrix === 'function') {
+        const size = 240;
+        const svg = DATAMatrix({ msg: code, dim: size, pad: 1, pal: ['#000', '#fff'] });
+        svg.setAttribute('width', '120');
+        svg.setAttribute('height', '120');
+        container.innerHTML = '';
+        container.appendChild(svg);
+        const xml = new XMLSerializer().serializeToString(svg);
+        const svg64 = window.btoa(unescape(encodeURIComponent(xml)));
+        const svgDataUrl = 'data:image/svg+xml;base64,' + svg64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = function () {
+          ctx.drawImage(img, 0, 0);
+          try {
+            const pngUrl = canvas.toDataURL('image/png');
+            if (downloadLink) {
+              downloadLink.setAttribute('href', pngUrl);
+            }
+          } catch (err) {
+            // leave existing href
+          }
+        };
+        img.src = svgDataUrl;
+      }
+    } catch (err) {
+      // Fallback: no client‑side code generated
+    }
+  });
+  </script>
+{% endblock %}

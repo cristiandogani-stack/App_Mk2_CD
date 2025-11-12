@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Attributi {{ type.name }} • {{ product.name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">{{ type.name }} – {{ product.name }}</h2>
+  <p class="section-subtitle">Valori degli attributi definiti per questo tipo di componente nel prodotto.</p>
+  {% if fields|length == 0 %}
+    <p class="muted">Nessun campo definito per questo tipo.</p>
+  {% else %}
+    {#
+      Wrap the attribute table in a table-responsive container so that
+      custom styling defined in the CSS (border spacing, glass
+      backgrounds and rounded corners) applies uniformly.  Retain the
+      glass class for additional backdrop styling and padding.
+    #}
+    <div class="glass table-responsive" style="padding: 8px;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Componente</th>
+            {% for f in fields %}
+              <th>{{ f.name }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.component.structure.name }}</td>
+              {% for f in fields %}
+                {% set val = row['values'].get(f.id) %}
+                <td>{{ val or '—' }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+  <div style="margin-top: 12px;">
+    <a class="btn ghost" href="{{ url_for('products.detail', id=product.id) }}">← Torna al prodotto</a>
+  </div>
+</section>
+{% endblock %}

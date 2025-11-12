@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+
+{#
+  Product overview for the warehouse.
+
+  This landing page displays all defined products as cards in a responsive
+  grid.  Each card shows the product image (or a placeholder when no
+  image is defined), the product name and the number of complete units
+  that can currently be assembled from on‑hand stock.  Clicking a card
+  opens the detailed bill of materials for that product.  The tab bar
+  mirrors other inventory pages and highlights the "Prodotti" section.
+#}
+
+{% block title %}Magazzino – Prodotti{% endblock %}
+
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Magazzino: Prodotti</h2>
+  {# Navigation across warehouse sections.  "Assiemi" now links to the
+     dedicated assemblies page and "Prodotti" points to this overview. #}
+  {# Tab navigation across all warehouse sections.  Users can switch between
+     assemblies, parts, commercial components, products and the history.
+     The active tab is highlighted by comparing with the ``active_tab``
+     variable passed from the view. #}
+  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+    {# Only display the "Prodotti" and "Storico Magazzino" tabs on the product overview.
+       Category tabs require a selected product and are hidden here. #}
+    <a href="{{ url_for('inventory.index') }}"
+       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+    {# Link to the production history from the product overview.  The text
+       "Storico produzione" replaces the former "Archivio assiemi".  When
+       active_tab is 'archive' this button appears highlighted. #}
+    <a href="{{ url_for('inventory.archive') }}"
+       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+  </div>
+
+  {% if product_cards|length == 0 %}
+    <p class="muted">Nessun prodotto definito.</p>
+  {% else %}
+    <div class="product-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:16px;">
+      {% for item in product_cards %}
+        {% set product = item.product %}
+        <div class="card glass" style="display:flex; flex-direction:column; align-items:center; padding:16px;">
+          <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" style="text-decoration:none; color:inherit; display:flex; flex-direction:column; align-items:center; width:100%;">
+            <div style="width:100%; height:150px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;">
+              {% if product.image_filename %}
+                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + product.image_filename) }}" alt="{{ product.name }}" style="max-width:100%; max-height:100%; object-fit:contain;">
+              {% else %}
+                <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+              {% endif %}
+            </div>
+            <div style="text-align:center;">
+              <h4 style="margin:0 0 4px 0; font-size:16px; font-weight:600;">{{ product.name }}</h4>
+              <p style="margin:0; font-size:14px; color:var(--text-muted);">Disponibili: {{ item.quantity_complete }}</p>
+            </div>
+          </a>
+          {# Build controls: semaforo and costruisci button.  Placed outside the link to avoid capturing clicks. #}
+          <div style="margin-top:12px; display:flex; justify-content:center; align-items:center; gap:8px;">
+            {% if item.quantity_complete > 0 %}
+              <span style="font-size:18px;">🟢</span>
+              <a href="javascript:void(0);" class="btn primary small"
+                 onclick='prenotaProdotto({{ product.id }}, {{ product.name|tojson }}, {{ item.quantity_complete }})'>Prenota</a>
+            {% else %}
+              <span style="font-size:18px;">🔴</span>
+              <button class="btn ghost small" disabled>Prenota</button>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+</section>
+{#
+  Helper function to reserve production boxes for finished products.
+  This function mirrors the implementation in the products list and
+  triggers the API to create a reservation with an ASSIEME box type
+  overriding the component code to the product name.  It prompts the
+  operator for the number of units to build (bounded by the available
+  quantity) and redirects to the production box upon success.
+#}
+<script>
+function prenotaProdotto(productId, productName, maxQty) {
+  if (!maxQty || maxQty <= 0) {
+    alert('Nessuna unità prenotabile disponibile.');
+    return;
+  }
+  const qtyStr = prompt('Quantità da prenotare (max ' + maxQty + ')', '1');
+  if (qtyStr === null) return;
+  const qty = parseInt(qtyStr, 10);
+  if (!qty || qty <= 0 || qty > maxQty) {
+    alert('Quantità non valida.');
+    return;
+  }
+  fetch('/api/reservations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productId: productId,
+      quantity: qty,
+      note: '',
+      boxType: 'PRODOTTO',
+      componentCode: productName
+    })
+  })
+    .then(res => {
+      if (!res.ok) throw new Error('Errore nella creazione della prenotazione');
+      return res.json();
+    })
+    .then(data => {
+      const codes = (data.items || []).map(i => i.datamatrix).join(', ');
+      alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+      if (data.productionBoxId) {
+        window.location.href = '/inventory/production_box/' + data.productionBoxId;
+      }
+    })
+    .catch(err => {
+      alert('Si è verificato un errore: ' + err.message);
+      console.error(err);
+    });
+}
+</script>
+{% endblock %}

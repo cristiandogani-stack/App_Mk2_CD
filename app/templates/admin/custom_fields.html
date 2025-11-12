@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Campi personalizzati - Argal{% endblock %}
+{% block content %}
+<section class="section">
+  <h2 class="section-title">Campi personalizzati</h2>
+  <p class="section-subtitle">Definisci campi aggiuntivi da associare ai prodotti o alle righe della distinta base.</p>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid grid-2">
+      <label class="field">
+        <span>Nome</span>
+        <input name="name" required placeholder="es. Colore">
+      </label>
+      <label class="field">
+        <span>Tipo</span>
+        <select name="field_type">
+          <option value="text">Testo</option>
+          <option value="number">Numero</option>
+          <option value="date">Data</option>
+        </select>
+      </label>
+    </div>
+    <div class="grid grid-2">
+      <label class="field">
+        <span>Entità</span>
+        <select name="entity">
+          <option value="product">Prodotto</option>
+          <option value="bom_line">Distinta Base (riga)</option>
+          <option value="bom_line_assieme">Distinta Base Assieme</option>
+          <option value="bom_line_parte">Distinta Base Parte</option>
+          <option value="bom_line_parte_commerciale">Distinta Base Parte Commerciale</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Gruppo</span>
+        <input name="group" placeholder="Opzionale">
+      </label>
+    </div>
+    <button class="btn primary" type="submit">Aggiungi campo</button>
+  </form>
+  <div style="height:12px;"></div>
+  <h3 class="card-title">Elenco campi</h3>
+  {% if fields|length == 0 %}
+    <p class="muted">Nessun campo personalizzato definito.</p>
+  {% else %}
+    <div class="list glass">
+      {% for f in fields %}
+      <div class="list-row">
+        <div class="list-info">
+          <div class="list-title">{{ f.name }}</div>
+          <div class="list-subtitle">
+            Entità:
+            {% if f.entity == 'product' %}
+              Prodotto
+            {% elif f.entity == 'bom_line' %}
+              Distinta Base (riga)
+            {% elif f.entity == 'bom_line_assieme' %}
+              Distinta Base Assieme
+            {% elif f.entity == 'bom_line_parte' %}
+              Distinta Base Parte
+            {% elif f.entity == 'bom_line_parte_commerciale' %}
+              Distinta Base Parte Commerciale
+            {% else %}
+              {{ f.entity }}
+            {% endif %}
+             · Tipo: {{ f.field_type }}{% if f.group %} · Gruppo: {{ f.group }}{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

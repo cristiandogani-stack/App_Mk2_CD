@@ -51,7 +51,7 @@
   {# Tab navigation: allow toggling between products and the history.  The
      ``active_tab`` variable passed from the view controls which button
      appears highlighted. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.index') }}"
        class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
     <a href="{{ url_for('inventory.archive') }}"

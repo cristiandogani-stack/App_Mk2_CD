@@ -25,7 +25,7 @@
   {# Tab navigation across product views.  Use links rather than buttons so
      each tab navigates to a dedicated view.  The active tab is determined
      by the ``active_tab`` parameter passed from the view. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     {# Removed "Prodotto" tab: only specialised views remain. #}
     <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>

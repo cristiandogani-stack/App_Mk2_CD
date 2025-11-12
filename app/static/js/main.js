@@ -5,27 +5,41 @@ document.addEventListener('DOMContentLoaded', () => {
   if (burger && menu){
     burger.addEventListener('click', () => menu.classList.toggle('show'));
   }
-  const toggle = document.getElementById('themeToggle');
-  if (toggle){
+  const themeButtons = Array.from(document.querySelectorAll('[data-theme-button]'));
+  if (themeButtons.length){
+    const meta = document.querySelector('meta[name="color-scheme"]');
     const applyTheme = (t) => {
-      // Apply a `data-theme` attribute on the <html> tag so that CSS rules can react
-      document.documentElement.setAttribute('data-theme', t);
-      // Persist the choice so that reloads remember the preference
+      if (t === 'system'){
+        document.documentElement.removeAttribute('data-theme');
+        document.documentElement.style.colorScheme = '';
+      } else {
+        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.style.colorScheme = t === 'light' ? 'light dark' : 'dark light';
+      }
       try{ localStorage.setItem('theme', t); }catch(e){}
-      // Update the <meta name="color-scheme"> tag to hint the browser about our current choice.
-      // Without this the browser may render form controls (like inputs) in the wrong style.
-      const meta = document.querySelector('meta[name="color-scheme"]');
       if (meta){
-        if (t === 'dark') meta.content = 'dark light';
-        else if (t === 'light') meta.content = 'light dark';
+        if (t === 'light') meta.content = 'light dark';
+        else if (t === 'dark') meta.content = 'dark light';
         else meta.content = 'dark light';
       }
+      const labelText = t === 'light' ? 'Chiaro' : (t === 'dark' ? 'Scuro' : 'Sistema');
+      const iconText = t === 'light' ? '☀️' : (t === 'dark' ? '🌙' : '🖥️');
+      themeButtons.forEach(btn => {
+        btn.dataset.mode = t;
+        const icon = btn.querySelector('.icon');
+        const label = btn.querySelector('.label');
+        if (icon){ icon.textContent = iconText; }
+        if (label){ label.textContent = labelText; }
+        btn.setAttribute('aria-label', `Tema attuale: ${labelText}. Cambia tema`);
+      });
     };
     let current = localStorage.getItem('theme') || 'system';
     applyTheme(current);
-    toggle.addEventListener('click', () => {
-      current = current === 'light' ? 'dark' : (current === 'dark' ? 'system' : 'light');
-      applyTheme(current);
+    themeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        current = current === 'light' ? 'dark' : (current === 'dark' ? 'system' : 'light');
+        applyTheme(current);
+      });
     });
   }
 });

@@ -24,7 +24,7 @@
   {# Tab navigation reused from other warehouse pages.  #}
   {# Full category navigation on the commercial components listing.  Users can switch
      between assemblies, parts, commercial items, products and history. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.list_assemblies') }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
     <a href="{{ url_for('inventory.list_parts') }}"

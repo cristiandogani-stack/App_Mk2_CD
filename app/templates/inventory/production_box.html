@@ -90,6 +90,45 @@
 
       <div class="workflow-block">
         <div class="workflow-block-header">
+          <h4>Documenti checklist</h4>
+          {% if allow_build %}
+            <button type="button" class="btn small primary doc-open-action" data-target="build">Apri costruzione</button>
+          {% elif allow_load %}
+            <button type="button" class="btn small primary doc-open-action" data-target="load">Apri caricamento</button>
+          {% endif %}
+        </div>
+        {% if box.required_docs and box.required_docs|length > 0 %}
+          <div class="document-section">
+            {% for doc in box.required_docs %}
+              {% set doc_path = doc.path if doc.path else None %}
+              {% set doc_name = doc.name if doc.name else (doc_path.split('/')[-1] if doc_path else 'Documento') %}
+              <div class="document-card">
+                <div class="document-card-header">
+                  <span class="document-card-title">{{ doc_name }}</span>
+                  <div class="document-card-meta">
+                    {% if doc_path %}
+                      <a href="{{ url_for('static', filename=doc_path) }}" target="_blank" class="btn ghost small">Scarica</a>
+                    {% else %}
+                      <span class="muted" style="white-space:nowrap;">—</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="document-card-body">
+                  <p class="muted" style="margin:0;">Contrassegnato nella checklist del componente.</p>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted" style="margin:0;">Nessun documento selezionato nella checklist per questo box.</p>
+        {% endif %}
+        {% if show_row_actions %}
+          <p class="muted" style="margin-top:12px;">Utilizza il pulsante “Carica” accanto a ciascun componente per allegare i documenti.</p>
+        {% endif %}
+      </div>
+
+      <div class="workflow-block">
+        <div class="workflow-block-header">
           <h4>Componenti nel box</h4>
           {% if is_completed %}
             <span class="status-pill status-ready">Completato</span>
@@ -408,6 +447,26 @@ document.addEventListener('DOMContentLoaded', function(){
           console.error('Unable to download DataMatrix', err);
           alert('Impossibile scaricare il Datamatrix.');
         });
+      });
+    });
+  }
+
+  const docOpenButtons = document.querySelectorAll('.doc-open-action');
+  if (docOpenButtons && docOpenButtons.length > 0) {
+    docOpenButtons.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const target = btn.getAttribute('data-target');
+        if (target === 'build') {
+          const buildTrigger = document.getElementById('btn-open-build');
+          if (buildTrigger) {
+            buildTrigger.click();
+          }
+        } else if (target === 'load') {
+          const loadTrigger = document.getElementById('btn-open-load');
+          if (loadTrigger) {
+            loadTrigger.click();
+          }
+        }
       });
     });
   }

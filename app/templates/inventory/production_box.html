@@ -58,7 +58,7 @@
         <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
         <div class="workflow-hero-buttons">
           {% if allow_build %}
-            <button id="btn-open-build" class="btn primary"
+            <button id="btn-open-build" type="button" class="btn primary"
                     {% if box.assembly_id %}
                       data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
                     {% elif box.product_id %}
@@ -91,7 +91,8 @@
         <div class="workflow-block-header">
           <h4>Documenti checklist</h4>
           {% if allow_load %}
-            <button id="btn-open-load" type="button" class="btn small primary">Carica documenti</button>
+            <button id="btn-open-load" type="button" class="btn small primary"
+                    data-load-url="{{ load_base_url or '' }}">Carica documenti</button>
           {% endif %}
         </div>
         {% if box.required_docs and box.required_docs|length > 0 %}
@@ -178,7 +179,10 @@
                     </td>
                     {% if show_row_actions %}
                       <td data-title="Azioni" class="text-right">
-                        <button class="btn small primary load-item" data-item-id="{{ item.id }}">Carica</button>
+                        <button class="btn small primary load-item"
+                                type="button"
+                                data-item-id="{{ item.id }}"
+                                data-load-url="{{ load_base_url or '' }}">Carica</button>
                       </td>
                     {% endif %}
                   </tr>
@@ -197,7 +201,7 @@
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
       <h3 class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
-      <button id="btn-close-build" class="btn ghost small workflow-modal-close">Chiudi</button>
+      <button id="btn-close-build" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
     <iframe id="buildFrame" src="" class="workflow-modal-frame"></iframe>
   </div>
@@ -205,11 +209,11 @@
 {% endif %}
 
 {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-<div id="loadModal" class="workflow-modal" style="display:none;" data-base-url="{{ load_base_url or '' }}">
+<div id="loadModal" class="workflow-modal" style="display:none;" data-base-url="{{ load_base_url or '' }}" aria-hidden="true">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
       <h3 class="workflow-modal-title">Carica {{ hero_name }}</h3>
-      <button id="btn-close-load" class="btn ghost small workflow-modal-close">Chiudi</button>
+      <button id="btn-close-load" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
     <iframe id="loadFrame" src="" class="workflow-modal-frame"></iframe>
   </div>
@@ -228,7 +232,7 @@
 document.addEventListener('DOMContentLoaded', function(){
   const loadModal = document.getElementById('loadModal');
   const loadFrame = document.getElementById('loadFrame');
-  const loadBaseUrl = loadModal ? loadModal.getAttribute('data-base-url') : '';
+  const defaultLoadUrl = loadModal ? loadModal.getAttribute('data-base-url') : '';
 
   function resetLoadModal(){
     if (loadFrame) {
@@ -251,10 +255,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const href = loc && loc.href ? loc.href : '';
         const path = loc && loc.pathname ? loc.pathname : '';
         if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-          loadFrame.onload = null;
-          loadFrame.src = '';
-          loadModal.style.display = 'none';
-          loadModal.setAttribute('aria-hidden', 'true');
+          resetLoadModal();
           window.location.reload();
         }
       } catch (err) {
@@ -263,14 +264,12 @@ document.addEventListener('DOMContentLoaded', function(){
     };
   }
 
-  function openLoadModal(options){
-    if (!loadModal || !loadFrame) {
-      return;
+  function resolveLoadUrl(trigger, options){
+    const candidate = (options && options.baseUrl) || (trigger ? trigger.getAttribute('data-load-url') : null) || defaultLoadUrl;
+    if (!candidate) {
+      return '';
     }
-    if (!loadBaseUrl) {
-      alert('Impossibile aprire il caricamento per questo box.');
-      return;
-    }
+    let finalUrl = '';
     const params = new URLSearchParams();
     params.set('embedded', '1');
     params.set('box_id', '{{ box.id }}');
@@ -280,8 +279,33 @@ document.addEventListener('DOMContentLoaded', function(){
     if (options && options.autoSelect) {
       params.set('auto_select', '1');
     }
+    try {
+      const url = new URL(candidate, window.location.origin);
+      params.forEach(function(value, key){
+        url.searchParams.set(key, value);
+      });
+      finalUrl = url.pathname + url.search;
+      if (url.hash) {
+        finalUrl += url.hash;
+      }
+    } catch (err) {
+      const sep = candidate.indexOf('?') === -1 ? '?' : '&';
+      finalUrl = candidate + sep + params.toString();
+    }
+    return finalUrl;
+  }
+
+  function openLoadModal(trigger, options){
+    if (!loadModal || !loadFrame) {
+      return;
+    }
+    const targetUrl = resolveLoadUrl(trigger, options);
+    if (!targetUrl) {
+      alert('Impossibile aprire il caricamento per questo box.');
+      return;
+    }
     attachLoadWatcher();
-    loadFrame.src = loadBaseUrl + '?' + params.toString();
+    loadFrame.src = targetUrl;
     loadModal.style.display = 'flex';
     loadModal.setAttribute('aria-hidden', 'false');
   }
@@ -289,7 +313,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const btnOpenLoad = document.getElementById('btn-open-load');
   if (btnOpenLoad) {
     btnOpenLoad.addEventListener('click', function(){
-      openLoadModal({ autoSelect: true });
+      openLoadModal(btnOpenLoad, { autoSelect: true });
     });
   }
 
@@ -378,7 +402,7 @@ document.addEventListener('DOMContentLoaded', function(){
         evt.stopPropagation();
         const itemId = this.getAttribute('data-item-id');
         if (itemId) {
-          openLoadModal({ itemId: itemId, autoSelect: true });
+          openLoadModal(this, { itemId: itemId, autoSelect: true });
         }
       });
     });

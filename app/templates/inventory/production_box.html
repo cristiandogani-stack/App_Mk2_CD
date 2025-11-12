@@ -22,6 +22,7 @@
 {% set allow_build = (not is_completed and box.box_type in ['ASSIEME', 'PRODOTTO'] and (box.assembly_id or box.product_id)) %}
 {% set allow_load = (not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] and box.lot_management) %}
 {% set show_row_actions = (not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] and not is_completed) %}
+{% set load_base_url = url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else None %}
 {% set hero_label = 'Box assieme' if box.box_type == 'ASSIEME' else 'Box prodotto' if box.box_type == 'PRODOTTO' else 'Box commerciale' if box.box_type == 'COMMERCIALE' else 'Box componenti' %}
 {% set hero_name = box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Box ' ~ box.code) %}
 {% set total_items = box.stock_items|length %}
@@ -64,8 +65,6 @@
                       data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
                     {% endif %}
             >Costruisci</button>
-          {% elif allow_load %}
-            <button id="btn-open-load" class="btn primary">Carica</button>
           {% endif %}
           <a href="#" class="btn ghost small back-link"
              onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">← Indietro</a>
@@ -91,10 +90,8 @@
       <div class="workflow-block">
         <div class="workflow-block-header">
           <h4>Documenti checklist</h4>
-          {% if allow_build %}
-            <button type="button" class="btn small primary doc-open-action" data-target="build">Apri costruzione</button>
-          {% elif allow_load %}
-            <button type="button" class="btn small primary doc-open-action" data-target="load">Carica documenti</button>
+          {% if allow_load %}
+            <button id="btn-open-load" type="button" class="btn small primary">Carica documenti</button>
           {% endif %}
         </div>
         {% if box.required_docs and box.required_docs|length > 0 %}
@@ -208,7 +205,7 @@
 {% endif %}
 
 {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-<div id="loadModal" class="workflow-modal" style="display:none;">
+<div id="loadModal" class="workflow-modal" style="display:none;" data-base-url="{{ load_base_url or '' }}">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
       <h3 class="workflow-modal-title">Carica {{ hero_name }}</h3>
@@ -231,7 +228,7 @@
 document.addEventListener('DOMContentLoaded', function(){
   const loadModal = document.getElementById('loadModal');
   const loadFrame = document.getElementById('loadFrame');
-  const loadBaseUrl = "{{ url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else '' }}";
+  const loadBaseUrl = loadModal ? loadModal.getAttribute('data-base-url') : '';
 
   function resetLoadModal(){
     if (loadFrame) {
@@ -267,7 +264,11 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   function openLoadModal(options){
-    if (!loadModal || !loadFrame || !loadBaseUrl) {
+    if (!loadModal || !loadFrame) {
+      return;
+    }
+    if (!loadBaseUrl) {
+      alert('Impossibile aprire il caricamento per questo box.');
       return;
     }
     const params = new URLSearchParams();
@@ -451,22 +452,8 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  const docOpenButtons = document.querySelectorAll('.doc-open-action');
-  if (docOpenButtons && docOpenButtons.length > 0) {
-    docOpenButtons.forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        const target = btn.getAttribute('data-target');
-        if (target === 'build') {
-          const buildTrigger = document.getElementById('btn-open-build');
-          if (buildTrigger) {
-            buildTrigger.click();
-          }
-        } else if (target === 'load') {
-          openLoadModal({ autoSelect: true });
-        }
-      });
-    });
-  }
+  // Nessun bottone extra duplicato: il pulsante "Carica documenti"
+  // utilizza direttamente l'handler definito sopra.
 });
 </script>
 

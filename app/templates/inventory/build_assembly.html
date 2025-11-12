@@ -214,20 +214,24 @@ document.addEventListener('DOMContentLoaded', function(){
       <div style="margin-top:16px;">
         {% if asm_docs %}
           <h5 style="margin:0 0 6px; font-size:14px; font-weight:600;">Documenti assieme</h5>
-          <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
+          <div class="document-section">
             {% for doc in asm_docs %}
-              <div class="doc-item" style="display:flex; flex-direction:column; gap:6px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <span style="font-size:14px; font-weight:600;">{{ doc_label_map.get(doc.type, doc.type) }}</span>
+            <div class="document-card">
+              <div class="document-card-header">
+                <span class="document-card-title">{{ doc_label_map.get(doc.type, doc.type) }}</span>
+                <div class="document-card-meta">
                   {% if doc.original_filename %}
                     <a href="{{ url_for('products.download_file', filename=doc.original_filename) }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
                   {% else %}
                     <span class="muted" style="white-space:nowrap;">—</span>
                   {% endif %}
                 </div>
-                <input type="file" name="{{ doc.field_name }}" required style="width:100%;">
-                <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
               </div>
+              <div class="document-card-body">
+                <input type="file" name="{{ doc.field_name }}" required>
+                <span class="file-name document-file-name"></span>
+              </div>
+            </div>
             {% endfor %}
           </div>
         {% else %}

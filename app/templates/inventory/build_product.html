@@ -134,33 +134,36 @@ document.addEventListener('DOMContentLoaded', function(){
         {% if prod_docs %}
           <div style="margin-top:24px;">
             <h5 style="margin:0 0 6px; font-size:14px; font-weight:600;">Documenti prodotto</h5>
-            <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
+            <div class="document-section">
               {# Iterate once per document category.  For each category, list all existing documents
                  with download links, then show a single file input for uploading the compiled
                  version.  This prevents duplicate file inputs when multiple source documents
                  exist in the same category. #}
               {% for folder_key, docs in prod_docs.items() %}
-                {# Skip categories with no documents #}
                 {% if docs|length > 0 %}
-                  <div class="doc-category" style="display:flex; flex-direction:column; gap:6px;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                      <span style="font-size:14px; font-weight:600; white-space:nowrap;">{{ doc_label_map.get(folder_key, folder_key) }}</span>
-                      <div style="display:flex; flex-direction:column; gap:2px;">
+                <div class="document-card">
+                  <div class="document-card-header">
+                    <span class="document-card-title">{{ doc_label_map.get(folder_key, folder_key) }}</span>
+                    <div class="document-card-meta">
+                      <div class="document-downloads">
                         {% for doc in docs %}
-                          <div style="display:flex; align-items:center; gap:4px;">
-                            <span style="font-size:14px;">{{ doc.display_name }}</span>
-                            {% if doc.url %}
-                              <a href="{{ doc.url }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
-                            {% else %}
-                              <span class="muted" style="white-space:nowrap;">—</span>
-                            {% endif %}
-                          </div>
+                        <div class="document-downloads-row">
+                          <span style="font-size:14px;">{{ doc.display_name }}</span>
+                          {% if doc.url %}
+                            <a href="{{ doc.url }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
+                          {% else %}
+                            <span class="muted" style="white-space:nowrap;">—</span>
+                          {% endif %}
+                        </div>
                         {% endfor %}
                       </div>
                     </div>
-                    <input type="file" name="upload_{{ product.id }}_{{ folder_key }}_0" required style="width:100%;">
-                    <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
                   </div>
+                  <div class="document-card-body">
+                    <input type="file" name="upload_{{ product.id }}_{{ folder_key }}_0" required>
+                    <span class="file-name document-file-name"></span>
+                  </div>
+                </div>
                 {% endif %}
               {% endfor %}
             </div>

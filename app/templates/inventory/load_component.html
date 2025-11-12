@@ -77,25 +77,20 @@
          is submitted. #}
       {% if doc_defs %}
       <h5 style="margin:16px 0 6px; font-size:14px; font-weight:600;">Documenti</h5>
-      <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
+      <div class="document-section">
         {% for doc in doc_defs %}
-          {# Each document is laid out vertically for better readability on mobile.  The
-             label and download link are stacked and centred, followed by the file
-             input occupying the full width. #}
-          <div class="doc-item" style="display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              {# Display the document type using the human‑readable label when available;
-                 fall back to the display_name provided by the checklist definition. #}
-              <span style="font-size:14px; font-weight:600;">{{ doc_label_map.get(doc.type, doc.display_name) }}</span>
-              {# Use a standard ghost button (without the small modifier) for the
-                 per‑document download link so that it appears more
-                 prominent next to the document title.  The 'small'
-                 class made the link less visible on some devices. #}
-              <a href="{{ url_for('products.download_file', filename=doc.original_path) }}" target="_blank" class="btn ghost" style="white-space:nowrap;">Scarica</a>
+        <div class="document-card">
+          <div class="document-card-header">
+            <span class="document-card-title">{{ doc_label_map.get(doc.type, doc.display_name) }}</span>
+            <div class="document-card-meta">
+              <a href="{{ url_for('products.download_file', filename=doc.original_path) }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
             </div>
-            <input type="file" name="{{ doc.field_name }}" required style="width:100%;">
-            <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
           </div>
+          <div class="document-card-body">
+            <input type="file" name="{{ doc.field_name }}" required>
+            <span class="file-name document-file-name"></span>
+          </div>
+        </div>
         {% endfor %}
       </div>
       {% else %}

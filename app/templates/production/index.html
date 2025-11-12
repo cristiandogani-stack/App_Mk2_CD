@@ -58,9 +58,9 @@
                  property attached to the box; if absent, fall back to the
                  product image and finally to the gear placeholder. #}
               {% if box.root_image_filename %}
-                <img loading="lazy" src="{{ url_for('static', filename='uploads/' + box.root_image_filename) }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
+                <img loading="lazy" decoding="async" src="{{ url_for('static', filename='uploads/' + box.root_image_filename) }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;">
               {% else %}
-                <img src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
+                <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ box.root_structure.name if box.root_structure else '' }}" style="max-width:100%; max-height:100%; object-fit:contain; filter: invert(1); opacity:0.7;">
               {% endif %}
             </div>
             <div style="flex:1 1 auto; min-width:160px;">

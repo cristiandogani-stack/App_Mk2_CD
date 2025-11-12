@@ -14,7 +14,7 @@
     <div class="login-card glass">
       <div class="login-brand">
         {# Updated logo to the new PNG and ensure it maintains aspect ratio #}
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo lg">
+        <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo lg">
         <h1>Argal</h1>
         <p class="subtitle">Area riservata</p>
       </div>

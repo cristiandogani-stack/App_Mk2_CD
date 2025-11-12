@@ -87,8 +87,6 @@ document.addEventListener('DOMContentLoaded', function(){
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% endif %}
         {% set prod_docs = doc_map.get(product.id) %}
-        {% set associated_total = associated_counts.values() | sum if associated_counts else 0 %}
-        {% set required_total = required_quantities.values() | sum if required_quantities else 0 %}
         <header class="workflow-header">
           <div class="workflow-thumb">
             {% set prod_image = product.display_image_filename or product.image_filename %}
@@ -103,16 +101,8 @@ document.addEventListener('DOMContentLoaded', function(){
             {% if product.description %}
               <p class="workflow-subtitle">{{ product.description }}</p>
             {% endif %}
-            <div class="workflow-meta">
-              <span class="workflow-chip">Prodotto</span>
-              <span class="workflow-chip">Unità costruibili: {{ number_buildable }}</span>
-              <span class="workflow-chip">Componenti: {{ children|length }}</span>
-              <span class="workflow-chip">Associati: {{ associated_total }}</span>
-              <span class="workflow-chip">Richiesti: {{ required_total }}</span>
-            </div>
             <div class="workflow-status">
-              <span class="workflow-pill">Documenti e componenti</span>
-              <span class="workflow-indicator" title="Documenti e componenti">{{ '🟢' if ready_parts and docs_ready and assoc_ready else '🔴' }}</span>
+              <span class="workflow-indicator" title="Stato lavorazione">{{ '🟢 Pronto' if ready_parts and docs_ready and assoc_ready else '🔴 In attesa' }}</span>
             </div>
           </div>
         </header>
@@ -137,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function(){
                     <h4 class="workflow-association-title">{{ child.name }}</h4>
                     <p class="workflow-association-meta">Richiesti: {{ required_quantities.get(child.id, 1) }}</p>
                     <p class="workflow-association-meta">Associati: {{ associated_counts.get(child.id, 0) }}</p>
-                    <p class="workflow-association-meta">Disponibili: {{ child.quantity_in_stock or 0 }}</p>
+                    <p class="workflow-association-meta">Disponibili: {{ (child.quantity_in_stock or 0)|int }}</p>
                     <button type="button"
                             class="btn small primary associate"
                             data-part-id="{{ child.id }}"
@@ -211,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const form = document.querySelector('form');
   if (!form) return;
   const fileInputs = form.querySelectorAll('input[type="file"]');
-  const semSpan = document.querySelector('span[title="Documenti e componenti"]');
+  const semSpan = form.querySelector('.workflow-indicator');
   const buildBtn = form.querySelector('button[type="submit"]');
   const readyParts = {{ ready_parts | tojson | safe }};
   const assocReady = {{ assoc_ready | tojson | safe }};
@@ -229,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const allReady = docsOk && readyParts && assocReady;
     if (semSpan) {
-      semSpan.textContent = allReady ? '🟢' : '🔴';
+      semSpan.textContent = allReady ? '🟢 Pronto' : '🔴 In attesa';
     }
     if (buildBtn) {
       buildBtn.disabled = !allReady;

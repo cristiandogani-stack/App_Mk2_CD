@@ -87,11 +87,8 @@ document.addEventListener('DOMContentLoaded', function(){
   // correspond to the required documents for each part.  When no
   // documents are required the list may be empty.
   const fileInputs = form.querySelectorAll('input[type="file"]');
-  // Locate the traffic light span by its title attribute.  The build
-  // template uses a single span with title "Documenti e componenti"
-  // for the combined indicator.  If the title changes in the
-  // template, update this selector accordingly.
-  const semSpan = form.querySelector('span[title="Documenti e componenti"]');
+  // Locate the traffic light element displayed in the header.
+  const semSpan = form.querySelector('.workflow-indicator');
   // Reference the submit button.  It has type="submit" in the form.
   const buildBtn = form.querySelector('button[type="submit"]');
   // Determine the server-side readiness of parts and associations.  Use
@@ -115,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function(){
     // Update the traffic light display.  Only update when the element
     // exists to avoid errors when the template changes.
     if (semSpan) {
-      semSpan.textContent = docsOk && readyParts && assocReady ? '🟢' : '🔴';
+      semSpan.textContent = docsOk && readyParts && assocReady ? '🟢 Pronto' : '🔴 In attesa';
     }
     // Enable or disable the build button.  The button is enabled only
     // when all conditions are satisfied.  If the build button is not
@@ -157,8 +154,6 @@ document.addEventListener('DOMContentLoaded', function(){
         'ddt_fornitore': 'DDT fornitore',
         'altro': 'Altro'
       } %}
-      {% set associated_total = associated_counts.values() | sum if associated_counts else 0 %}
-      {% set required_total = required_quantities.values() | sum if required_quantities else 0 %}
       <header class="workflow-header">
         <div class="workflow-thumb">
           {% set asm_image = assembly.display_image_filename or assembly.image_filename %}
@@ -173,16 +168,9 @@ document.addEventListener('DOMContentLoaded', function(){
           {% if assembly.description %}
             <p class="workflow-subtitle">{{ assembly.description }}</p>
           {% endif %}
-          <div class="workflow-meta">
-            <span class="workflow-chip">Assieme</span>
-            <span class="workflow-chip">Componenti: {{ parts|length }}</span>
-            <span class="workflow-chip">Associati: {{ associated_total }}</span>
-            <span class="workflow-chip">Richiesti: {{ required_total }}</span>
-          </div>
           <div class="workflow-status">
-            <span class="workflow-pill">Documenti e componenti</span>
-            <span class="workflow-indicator" title="Documenti e componenti">
-              {{ '🟢' if docs_ready and assoc_ready else '🔴' }}
+            <span class="workflow-indicator" title="Stato lavorazione">
+              {{ '🟢 Pronto' if docs_ready and assoc_ready else '🔴 In attesa' }}
             </span>
           </div>
         </div>

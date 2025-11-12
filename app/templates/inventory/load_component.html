@@ -72,19 +72,9 @@
           {% if part.description %}
             <p class="workflow-subtitle">{{ part.description }}</p>
           {% endif %}
-          <div class="workflow-meta">
-            <span class="workflow-chip">
-              {% if part.flag_commercial %}
-                Parte a commercio
-              {% else %}
-                Parte
-              {% endif %}
-            </span>
-          </div>
           <div class="workflow-status">
-            <span class="workflow-pill">Checklist documenti</span>
-            <span class="workflow-indicator" title="Documenti">
-              {{ '🟢' if docs_ready else '🔴' }}
+            <span class="workflow-indicator" title="Stato lavorazione">
+              {{ '🟢 Pronto' if docs_ready else '🔴 In attesa' }}
             </span>
           </div>
         </div>
@@ -169,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const form = document.querySelector('form');
   if (!form) return;
   const fileInputs = form.querySelectorAll('input[type="file"]');
-  const semSpan = form.querySelector('span[title="Documenti"]');
+  const semSpan = form.querySelector('.workflow-indicator');
   const submitBtn = form.querySelector('button[type="submit"]');
   function updateDocReady() {
     // If no documents are required the indicator is green by default
@@ -183,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function(){
       });
     }
     if (semSpan) {
-      semSpan.textContent = docsOk ? '🟢' : '🔴';
+      semSpan.textContent = docsOk ? '🟢 Pronto' : '🔴 In attesa';
     }
     if (submitBtn) {
       // Disable the submit button until all required docs are selected

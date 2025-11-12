@@ -75,100 +75,117 @@ document.addEventListener('DOMContentLoaded', function(){
   <h2 class="section-title">Costruisci {{ product.name }}</h2>
   {# Back link: return to the referrer or fall back to the product detail page #}
   <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:12px;">Indietro</a>
-  <div class="glass" style="padding:16px;">
-    {# If no BOM exists show a muted message #}
+  <div class="glass workflow-container">
     {% if children|length == 0 %}
-      <p class="muted">Nessun BOM definito per questo prodotto.</p>
-    {% else %}
-      {# Build readiness and number of units buildable.  The traffic
-         light indicates whether all parts are in stock, all scans are
-         completed and all uploads have files selected.  The state is
-         updated dynamically in the script below. #}
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-        <span style="font-size:20px;">Unità costruibili: {{ number_buildable }}</span>
-        <span title="Documenti e componenti" style="font-size:24px;">{{ '🟢' if ready_parts and docs_ready and assoc_ready else '🔴' }}</span>
+      <div class="workflow-body">
+        <p class="muted" style="margin:0;">Nessun BOM definito per questo prodotto.</p>
       </div>
-      {# Start form: include all child cards, documentation and build controls inside the form so that
-         file inputs are correctly submitted and monitored by the dynamic script. #}
-      <form method="post" enctype="multipart/form-data" style="margin-top:0;">
+    {% else %}
+      <form method="post" enctype="multipart/form-data" class="workflow-form form">
         <input type="hidden" name="back_url" value="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}">
         {% if csrf_token %}
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% endif %}
-        {# Child component cards.  Each card shows required/available
-           quantities, the number of associated components and any
-           existing documentation.  For each existing document a file
-           input is rendered to capture the compiled version. #}
-        <div class="grid grid-2" style="gap:16px;">
-          {% for c in children %}
-            {% set child = c.child %}
-            <div class="card glass" style="padding:16px;">
-              <div style="text-align:center; margin-bottom:8px;">
-                {% if child.display_image_filename %}
-                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.display_image_filename) }}" alt="{{ child.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto;">
-                {% elif child.image_filename %}
-                  <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.image_filename) }}" alt="{{ child.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto;">
-                {% else %}
-                  <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ child.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto; filter: invert(1); opacity:0.7;">
-                {% endif %}
-              </div>
-              <h4 style="text-align:center; margin:0 0 4px 0; font-size:18px; font-weight:600;">{{ child.name }}</h4>
-              <p style="text-align:center; font-size:14px; color:var(--muted); margin:0 0 4px;">Richiesti: {{ required_quantities.get(child.id, 1) }}</p>
-              <p style="text-align:center; font-size:14px; color:var(--muted); margin:0 0 4px;">Associati: {{ associated_counts.get(child.id, 0) }}</p>
-              <p style="text-align:center; font-size:14px; color:var(--muted); margin:0 0 12px;">Disponibili: {{ child.quantity_in_stock or 0 }}</p>
-              <div style="text-align:center; margin-bottom:12px;">
-                <button type="button"
-                        class="btn small primary associate"
-                        data-part-id="{{ child.id }}"
-                        data-part-name="{{ child.name }}"
-                        data-required="{{ required_quantities.get(child.id, 1) }}"
-                        data-associated="{{ associated_counts.get(child.id, 0) }}"
-                        {% if (not assembly_code) or (associated_counts.get(child.id, 0) >= required_quantities.get(child.id, 1)) %}disabled{% endif %}>Associa</button>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-        {# Product-level documentation section.  Show existing docs and
-           upload fields below the component list. #}
         {% set prod_docs = doc_map.get(product.id) %}
-        {% if prod_docs %}
-          <div style="margin-top:24px;">
-            <h5 style="margin:0 0 6px; font-size:14px; font-weight:600;">Documenti prodotto</h5>
-            <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
-              {# Iterate once per document category.  For each category, list all existing documents
-                 with download links, then show a single file input for uploading the compiled
-                 version.  This prevents duplicate file inputs when multiple source documents
-                 exist in the same category. #}
-              {% for folder_key, docs in prod_docs.items() %}
-                {# Skip categories with no documents #}
-                {% if docs|length > 0 %}
-                  <div class="doc-category" style="display:flex; flex-direction:column; gap:6px;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                      <span style="font-size:14px; font-weight:600; white-space:nowrap;">{{ doc_label_map.get(folder_key, folder_key) }}</span>
-                      <div style="display:flex; flex-direction:column; gap:2px;">
-                        {% for doc in docs %}
-                          <div style="display:flex; align-items:center; gap:4px;">
-                            <span style="font-size:14px;">{{ doc.display_name }}</span>
-                            {% if doc.url %}
-                              <a href="{{ doc.url }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
-                            {% else %}
-                              <span class="muted" style="white-space:nowrap;">—</span>
-                            {% endif %}
-                          </div>
-                        {% endfor %}
-                      </div>
-                    </div>
-                    <input type="file" name="upload_{{ product.id }}_{{ folder_key }}_0" required style="width:100%;">
-                    <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
-                  </div>
-                {% endif %}
-              {% endfor %}
+        <header class="workflow-header">
+          <div class="workflow-thumb">
+            {% set prod_image = product.display_image_filename or product.image_filename %}
+            {% if prod_image %}
+              <img loading="lazy" src="{{ url_for('static', filename='uploads/' + prod_image) }}" alt="{{ product.name }}">
+            {% else %}
+              <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="filter: invert(1); opacity:0.7;">
+            {% endif %}
+          </div>
+          <div class="workflow-header-text">
+            <h3 class="workflow-title">{{ product.name }}</h3>
+            {% if product.description %}
+              <p class="workflow-subtitle">{{ product.description }}</p>
+            {% endif %}
+            <div class="workflow-status">
+              <span class="workflow-indicator" title="Stato lavorazione">{{ '🟢 Pronto' if ready_parts and docs_ready and assoc_ready else '🔴 In attesa' }}</span>
             </div>
           </div>
-        {% endif %}
-        <div style="display:flex; gap:8px; margin-top:24px;">
-          <button type="submit" class="btn primary" {% if not ready_all %}disabled{% endif %}>Costruisci</button>
+        </header>
+        <div class="workflow-body">
+          <div class="workflow-main">
+            <div class="workflow-block">
+              <h4>Associa i componenti richiesti</h4>
+              <p class="muted" style="margin:0 0 12px;">Scansiona ogni componente fino al totale richiesto e assicurati che tutte le quantità siano disponibili.</p>
+              <div class="grid grid-2 workflow-association-grid">
+                {% for c in children %}
+                  {% set child = c.child %}
+                  <div class="card glass workflow-association-card">
+                    <div class="workflow-association-thumb">
+                      {% if child.display_image_filename %}
+                        <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.display_image_filename) }}" alt="{{ child.name }}">
+                      {% elif child.image_filename %}
+                        <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.image_filename) }}" alt="{{ child.name }}">
+                      {% else %}
+                        <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ child.name }}" style="filter: invert(1); opacity:0.7;">
+                      {% endif %}
+                    </div>
+                    <h4 class="workflow-association-title">{{ child.name }}</h4>
+                    <p class="workflow-association-meta">Richiesti: {{ required_quantities.get(child.id, 1) }}</p>
+                    <p class="workflow-association-meta">Associati: {{ associated_counts.get(child.id, 0) }}</p>
+                    <p class="workflow-association-meta">Disponibili: {{ (child.quantity_in_stock or 0)|int }}</p>
+                    <button type="button"
+                            class="btn small primary associate"
+                            data-part-id="{{ child.id }}"
+                            data-part-name="{{ child.name }}"
+                            data-required="{{ required_quantities.get(child.id, 1) }}"
+                            data-associated="{{ associated_counts.get(child.id, 0) }}"
+                            {% if (not assembly_code) or (associated_counts.get(child.id, 0) >= required_quantities.get(child.id, 1)) %}disabled{% endif %}>Associa</button>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <aside class="workflow-side">
+            <div class="workflow-block">
+              <h4>Documenti prodotto</h4>
+              {% if prod_docs %}
+                <div class="document-section">
+                  {# Iterate once per document category.  For each category, list all existing documents
+                     with download links, then show a single file input for uploading the compiled
+                     version.  This prevents duplicate file inputs when multiple source documents
+                     exist in the same category. #}
+                  {% for folder_key, docs in prod_docs.items() %}
+                    {% if docs|length > 0 %}
+                    <div class="document-card">
+                      <div class="document-card-header">
+                        <span class="document-card-title">{{ doc_label_map.get(folder_key, folder_key) }}</span>
+                        <div class="document-card-meta">
+                          <div class="document-downloads">
+                            {% for doc in docs %}
+                            <div class="document-downloads-row">
+                              <span style="font-size:14px;">{{ doc.display_name }}</span>
+                              {% if doc.url %}
+                                <a href="{{ doc.url }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
+                              {% else %}
+                                <span class="muted" style="white-space:nowrap;">—</span>
+                              {% endif %}
+                            </div>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="document-card-body">
+                        <input type="file" name="upload_{{ product.id }}_{{ folder_key }}_0" required>
+                        <span class="file-name document-file-name"></span>
+                      </div>
+                    </div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="muted" style="margin:0;">Nessuna documentazione richiesta per il prodotto.</p>
+              {% endif %}
+            </div>
+          </aside>
+        </div>
+        <div class="workflow-footer">
           <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost">Annulla</a>
+          <button type="submit" class="btn primary" {% if not ready_all %}disabled{% endif %}>Costruisci</button>
         </div>
       </form>
     {% endif %}
@@ -184,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const form = document.querySelector('form');
   if (!form) return;
   const fileInputs = form.querySelectorAll('input[type="file"]');
-  const semSpan = document.querySelector('span[title="Documenti e componenti"]');
+  const semSpan = form.querySelector('.workflow-indicator');
   const buildBtn = form.querySelector('button[type="submit"]');
   const readyParts = {{ ready_parts | tojson | safe }};
   const assocReady = {{ assoc_ready | tojson | safe }};
@@ -202,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const allReady = docsOk && readyParts && assocReady;
     if (semSpan) {
-      semSpan.textContent = allReady ? '🟢' : '🔴';
+      semSpan.textContent = allReady ? '🟢 Pronto' : '🔴 In attesa';
     }
     if (buildBtn) {
       buildBtn.disabled = !allReady;

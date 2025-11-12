@@ -56,18 +56,18 @@
   {% if box.stock_items|length == 0 %}
     <p class="muted">Il box è vuoto.</p>
   {% else %}
-    <table class="glass" style="width:100%; border-collapse:collapse;">
+    <table class="table table-compact">
       <thead>
         <tr>
-          <th style="text-align:left; padding:8px;">#</th>
-          <th style="text-align:left; padding:8px;">DataMatrix</th>
-          <th style="text-align:left; padding:8px;">Prodotto</th>
-          <th style="text-align:left; padding:8px;">Stato</th>
+          <th>#</th>
+          <th>DataMatrix</th>
+          <th>Prodotto</th>
+          <th>Stato</th>
           <!-- Header for download button column -->
-          <th style="text-align:right; padding:8px;"></th>
+          <th class="text-right"></th>
           {# Show an Actions column when lot management is disabled so operators can load items individually. #}
           {% if not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-          <th style="text-align:left; padding:8px;">Azioni</th>
+          <th>Azioni</th>
           {% endif %}
         </tr>
       </thead>
@@ -80,20 +80,20 @@
           COMPLETATO, show all items for audit purposes.
         #}
         {% if box.status == 'COMPLETATO' or item.status != 'COMPLETATO' %}
-        <tr style="border-bottom:1px solid var(--glass-stroke);">
-          <td style="padding:8px;">{{ loop.index }}</td>
-          <td style="padding:8px;">
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
             <!-- Container for the generated DataMatrix SVG -->
             <div class="dm-container" data-code="{{ item.datamatrix_code | e }}" style="margin-bottom:4px; background:#fff; display:inline-block;"></div>
           </td>
-          <td style="padding:8px;">{{ item.product.name }}</td>
-          <td style="padding:8px;">{{ item.status }}</td>
+          <td>{{ item.product.name }}</td>
+          <td>{{ item.status }}</td>
           <!-- Separate cell for the download button aligned to the right -->
-          <td style="padding:8px; text-align:right;">
+          <td class="text-right">
             <button class="btn small ghost dm-download">Scarica&nbsp;Datamatrix</button>
           </td>
           {% if not box.lot_management and box.box_type != 'ASSIEME' and box.status != 'COMPLETATO' %}
-          <td style="padding:8px;">
+          <td>
             <button class="btn small primary load-item" data-item-id="{{ item.id }}">Carica</button>
           </td>
           {% endif %}

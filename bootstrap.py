@@ -10,13 +10,13 @@ with app.app_context():
 
     admin = User.query.filter_by(role='admin').first()
     if not admin:
-        email = 'admin@example.com'
+        username = 'admin'
         password = secrets.token_urlsafe(12)
-        admin = User(email=email, role='admin', active=True)
+        admin = User(username=username, role='admin', active=True)
         admin.set_password(password)
         db.session.add(admin)
         print('--- ADMIN CREATO ---')
-        print(f'Email:    {email}')
+        print(f'Username: {username}')
         print(f'Password: {password}')
         print('Salva queste credenziali e cambiale dal codice/DB appena possibile.')
 

@@ -11,11 +11,11 @@ def login():
         return redirect(url_for('dashboard.index'))
 
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
+        username = request.form.get('username', '').strip().lower()
         password = request.form.get('password', '')
         remember = True if request.form.get('remember') == 'on' else False
 
-        user = User.query.filter_by(email=email, active=True).first()
+        user = User.query.filter_by(username=username, active=True).first()
         if user and user.check_password(password):
             login_user(user, remember=remember)
             flash('Bentornato!', 'success')

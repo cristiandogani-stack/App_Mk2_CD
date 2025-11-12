@@ -188,4 +188,20 @@ document.addEventListener('DOMContentLoaded', function(){
   updateDocReady();
 });
 </script>
+{% if request.args.get('auto_select') %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const firstInput = document.querySelector('input[type="file"]');
+  if (firstInput) {
+    setTimeout(function(){
+      try {
+        firstInput.click();
+      } catch (err) {
+        // Alcuni browser potrebbero bloccare il click programmato: ignora.
+      }
+    }, 250);
+  }
+});
+</script>
+{% endif %}
 {% endblock %}

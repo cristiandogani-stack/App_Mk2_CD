@@ -94,7 +94,7 @@
           {% if allow_build %}
             <button type="button" class="btn small primary doc-open-action" data-target="build">Apri costruzione</button>
           {% elif allow_load %}
-            <button type="button" class="btn small primary doc-open-action" data-target="load">Apri caricamento</button>
+            <button type="button" class="btn small primary doc-open-action" data-target="load">Carica documenti</button>
           {% endif %}
         </div>
         {% if box.required_docs and box.required_docs|length > 0 %}
@@ -229,53 +229,73 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  // For part and commercial boxes, open the load modal and embed the
-  // dedicated load component form when the "Carica" button is clicked.
+  const loadModal = document.getElementById('loadModal');
+  const loadFrame = document.getElementById('loadFrame');
+  const loadBaseUrl = "{{ url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else '' }}";
+
+  function resetLoadModal(){
+    if (loadFrame) {
+      loadFrame.onload = null;
+      loadFrame.src = '';
+    }
+    if (loadModal) {
+      loadModal.style.display = 'none';
+      loadModal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function attachLoadWatcher(){
+    if (!loadFrame || !loadModal) {
+      return;
+    }
+    loadFrame.onload = function(){
+      try {
+        const loc = loadFrame.contentWindow.location;
+        const href = loc && loc.href ? loc.href : '';
+        const path = loc && loc.pathname ? loc.pathname : '';
+        if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
+          loadFrame.onload = null;
+          loadFrame.src = '';
+          loadModal.style.display = 'none';
+          loadModal.setAttribute('aria-hidden', 'true');
+          window.location.reload();
+        }
+      } catch (err) {
+        // Ignore errors caused by blank or cross‑origin frames
+      }
+    };
+  }
+
+  function openLoadModal(options){
+    if (!loadModal || !loadFrame || !loadBaseUrl) {
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('embedded', '1');
+    params.set('box_id', '{{ box.id }}');
+    if (options && options.itemId) {
+      params.set('item_id', options.itemId);
+    }
+    if (options && options.autoSelect) {
+      params.set('auto_select', '1');
+    }
+    attachLoadWatcher();
+    loadFrame.src = loadBaseUrl + '?' + params.toString();
+    loadModal.style.display = 'flex';
+    loadModal.setAttribute('aria-hidden', 'false');
+  }
+
   const btnOpenLoad = document.getElementById('btn-open-load');
   if (btnOpenLoad) {
-    btnOpenLoad.addEventListener('click', function() {
-      const modal = document.getElementById('loadModal');
-      const iframe = document.getElementById('loadFrame');
-      if (modal && iframe) {
-        iframe.src = '/inventory/load/{{ box.root_structure.id }}?embedded=1&box_id={{ box.id }}';
-        modal.style.display = 'flex';
-        modal.setAttribute('aria-hidden', 'false');
-        // Monitor the iframe load event to detect when the form has redirected
-        iframe.onload = function() {
-          try {
-            const loc = iframe.contentWindow.location;
-            const href = loc && loc.href ? loc.href : '';
-            const path = loc && loc.pathname ? loc.pathname : '';
-            // If the iframe navigated away from the load page, treat it as completion
-            if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-              iframe.onload = null;
-              modal.style.display = 'none';
-              modal.setAttribute('aria-hidden', 'true');
-              iframe.src = '';
-              // Reload to reflect updated stock and box status
-              window.location.reload();
-            }
-          } catch (err) {
-            // Ignore errors caused by blank or cross‑origin frames
-          }
-        };
-      }
+    btnOpenLoad.addEventListener('click', function(){
+      openLoadModal({ autoSelect: true });
     });
   }
-  // Close the load modal and reset the iframe
+
   const btnCloseLoad = document.getElementById('btn-close-load');
   if (btnCloseLoad) {
-    btnCloseLoad.addEventListener('click', function() {
-      const modal = document.getElementById('loadModal');
-      const iframe = document.getElementById('loadFrame');
-      if (iframe) {
-        iframe.onload = null;
-        iframe.src = '';
-      }
-      if (modal) {
-        modal.style.display = 'none';
-        modal.setAttribute('aria-hidden', 'true');
-      }
+    btnCloseLoad.addEventListener('click', function(){
+      resetLoadModal();
     });
   }
   // For assembly and product boxes, open the build modal when the Costruisci button is clicked
@@ -356,28 +376,8 @@ document.addEventListener('DOMContentLoaded', function(){
       btn.addEventListener('click', function(evt) {
         evt.stopPropagation();
         const itemId = this.getAttribute('data-item-id');
-        const modal = document.getElementById('loadModal');
-        const iframe = document.getElementById('loadFrame');
-        if (modal && iframe && itemId) {
-          iframe.src = '/inventory/load/{{ box.root_structure.id }}?embedded=1&box_id={{ box.id }}&item_id=' + encodeURIComponent(itemId);
-          modal.style.display = 'flex';
-          modal.setAttribute('aria-hidden', 'false');
-          iframe.onload = function() {
-            try {
-              const loc = iframe.contentWindow.location;
-              const href = loc && loc.href ? loc.href : '';
-              const path = loc && loc.pathname ? loc.pathname : '';
-              if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-                iframe.onload = null;
-                modal.style.display = 'none';
-                modal.setAttribute('aria-hidden', 'true');
-                iframe.src = '';
-                window.location.reload();
-              }
-            } catch (err) {
-              // Ignore errors caused by blank or cross‑origin frames
-            }
-          };
+        if (itemId) {
+          openLoadModal({ itemId: itemId, autoSelect: true });
         }
       });
     });
@@ -462,10 +462,7 @@ document.addEventListener('DOMContentLoaded', function(){
             buildTrigger.click();
           }
         } else if (target === 'load') {
-          const loadTrigger = document.getElementById('btn-open-load');
-          if (loadTrigger) {
-            loadTrigger.click();
-          }
+          openLoadModal({ autoSelect: true });
         }
       });
     });

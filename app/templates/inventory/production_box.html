@@ -5,22 +5,11 @@
 
   Lists all stock items contained within a production box along with
   their current status and a summary of associated documents.  When
-  the box has not yet been completed a "Carica" button allows
-  operators to finalise the loading process.  The actual state
-  transition is performed via a call to the API endpoint
-  ``/api/production-box/<id>/load`` from the client‑side JavaScript.
+  the box has not yet been completed operators can either load
+  outstanding components or launch the guided build workflow for
+  assemblies and finished products.
 #}
 
-{#
-  Dynamically set the page title based on the current blueprint.  When this
-  view is rendered within the production module, the title should read
-  "Produzione" rather than "Magazzino" to reflect that the user is still
-  in the production workflow.  Use the request endpoint to determine
-  the blueprint name (e.g. "production" or "inventory").  Split the
-  endpoint on the dot and compare the first segment.  Default to
-  "Magazzino" for any unknown or inventory-related blueprints.
-  See base.html for similar logic used to highlight the active module.
- #}
 {% block title %}
   {%- set ep = request.endpoint or '' -%}
   {%- set bp = ep.split('.')|first -%}
@@ -29,164 +18,205 @@
 {% endblock %}
 
 {% block content %}
-<section class="section">
-  {#
-    Replace the plain JavaScript history.back() on the back link with logic
-    that reloads the referring page.  Using document.referrer ensures that
-    the previous page is fetched anew from the server rather than being
-    pulled from the browser's history cache.  When no referrer is available
-    (e.g. the user navigated directly), fall back to history.back().
-  #}
-  <a href="#" class="btn ghost small" style="margin-bottom:8px;"
-     onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">← Indietro</a>
-  {#
-    Display the box header.  For assembly boxes show the component name
-    (root_structure) as the title so that operators can identify what
-    they are building.  Otherwise fall back to the box code.  Always
-    show the current status beneath the title.
-  #}
-  <h2 class="section-title">
-    {% if box.root_structure and box.root_structure.name %}
-      {{ box.root_structure.name }}
-    {% else %}
-      Box di produzione: {{ box.code }}
-    {% endif %}
-  </h2>
-  <p class="muted" style="margin-top:-8px;">Stato: {{ box.status }}</p>
-  {% if box.stock_items|length == 0 %}
-    <p class="muted">Il box è vuoto.</p>
-  {% else %}
-    <table class="glass" style="width:100%; border-collapse:collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding:8px;">#</th>
-          <th style="text-align:left; padding:8px;">DataMatrix</th>
-          <th style="text-align:left; padding:8px;">Prodotto</th>
-          <th style="text-align:left; padding:8px;">Stato</th>
-          <!-- Header for download button column -->
-          <th style="text-align:right; padding:8px;"></th>
-          {# Show an Actions column when lot management is disabled so operators can load items individually. #}
-          {% if not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-          <th style="text-align:left; padding:8px;">Azioni</th>
-          {% endif %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in box.stock_items %}
-        {#
-          Hide completed items while the box is still in progress (not COMPLETATO).
-          When box.status is not COMPLETATO, skip rows whose item.status is COMPLETATO so
-          that loaded parts disappear from the table.  Once the box is marked
-          COMPLETATO, show all items for audit purposes.
-        #}
-        {% if box.status == 'COMPLETATO' or item.status != 'COMPLETATO' %}
-        <tr style="border-bottom:1px solid var(--glass-stroke);">
-          <td style="padding:8px;">{{ loop.index }}</td>
-          <td style="padding:8px;">
-            <!-- Container for the generated DataMatrix SVG -->
-            <div class="dm-container" data-code="{{ item.datamatrix_code | e }}" style="margin-bottom:4px; background:#fff; display:inline-block;"></div>
-          </td>
-          <td style="padding:8px;">{{ item.product.name }}</td>
-          <td style="padding:8px;">{{ item.status }}</td>
-          <!-- Separate cell for the download button aligned to the right -->
-          <td style="padding:8px; text-align:right;">
-            <button class="btn small ghost dm-download">Scarica&nbsp;Datamatrix</button>
-          </td>
-          {% if not box.lot_management and box.box_type != 'ASSIEME' and box.status != 'COMPLETATO' %}
-          <td style="padding:8px;">
-            <button class="btn small primary load-item" data-item-id="{{ item.id }}">Carica</button>
-          </td>
-          {% endif %}
-        </tr>
-        {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
-  {% if box.status != 'COMPLETATO' %}
-    <div style="margin-top:16px;">
-      {#
-        Display a build button for both assembly and product boxes.  A box is
-        considered buildable when its type is ASSIEME and it has either a
-        valid assembly_id (for assemblies) or a product_id (for finished
-        products).  The build button carries a data-build-url attribute
-        pointing to the appropriate guided build endpoint.  For parts
-        and commercial components (box.box_type != 'ASSIEME') the button
-        remains a global "Carica" when lot management is enabled.
-      #}
-      {# Show the build button when the box represents an assembly or a finished product.
-         Product boxes use the same guided build interface as assemblies, so
-         include ``PRODOTTO`` in the allowed list.  When the box type is
-         neither ASSIEME nor PRODOTTO, fall back to the load interface for
-         parts and commercial items. #}
-      {% if box.box_type in ['ASSIEME', 'PRODOTTO'] and (box.assembly_id or box.product_id) %}
-        <button id="btn-open-build" class="btn primary"
-                {% if box.assembly_id %}
-                  data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
-                {% elif box.product_id %}
-                  data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
-                {% endif %}
-        >Costruisci</button>
-      {% else %}
-        {# For part/commercial boxes show a global Carica button only when
-           lot management is enabled.  When lot management is disabled
-           operators load each item individually using the per-row
-           buttons in the table. #}
-        {% if box.lot_management %}
-        <button id="btn-open-load" class="btn primary">Carica</button>
-        {% endif %}
-      {% endif %}
-    </div>
-  {% endif %}
+{% set is_completed = (box.status == 'COMPLETATO') %}
+{% set allow_build = (not is_completed and box.box_type in ['ASSIEME', 'PRODOTTO'] and (box.assembly_id or box.product_id)) %}
+{% set allow_load = (not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] and box.lot_management) %}
+{% set show_row_actions = (not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] and not is_completed) %}
+{% set load_base_url = url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else None %}
+{% set hero_label = 'Box assieme' if box.box_type == 'ASSIEME' else 'Box prodotto' if box.box_type == 'PRODOTTO' else 'Box commerciale' if box.box_type == 'COMMERCIALE' else 'Box componenti' %}
+{% set hero_name = box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Box ' ~ box.code) %}
+{% set total_items = box.stock_items|length %}
+{% set loaded_items = box.stock_items|selectattr('status', 'equalto', 'COMPLETATO')|list|length %}
+{% set pending_items = total_items - loaded_items %}
+{% if is_completed %}
+{%   set visible_items = box.stock_items %}
+{% else %}
+{%   set visible_items = box.stock_items|rejectattr('status', 'equalto', 'COMPLETATO')|list %}
+{% endif %}
 
-  {# Modal for guided assembly build.
-     An iframe loads the build_assembly page so that operators can
-     upload documents and complete the checklist without leaving the
-     production context.  The modal is hidden by default and shown
-     when the "Costruisci" button is clicked.  A close button
-     allows cancelling the build and returning to the box view.
-  #}
-  {% if box.box_type in ['ASSIEME', 'PRODOTTO'] and (box.assembly_id or box.product_id) %}
-  <div id="buildModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; overflow:auto;">
-    <div style="background:var(--glass-bg); margin:40px auto; padding:0; border-radius:16px; max-width:900px; width:95%; height:90vh; max-height:95vh; display:flex; flex-direction:column; overflow:hidden;">
-      <div style="padding:16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--glass-stroke);">
-        <h3 style="margin:0; font-size:20px; font-weight:600;">
-          Costruisci
-          {% if box.root_structure and box.root_structure.name %}
-            {{ box.root_structure.name }}
-          {% elif box.product_name %}
-            {{ box.product_name }}
+<section class="section workflow-section production-box-section">
+  <div class="glass workflow-container production-box-container">
+    <div class="workflow-hero">
+      <div class="workflow-hero-main">
+        <div class="workflow-thumb production-box-thumb">
+          {% set hero_item = box.root_structure %}
+          {% if hero_item and hero_item.display_image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + hero_item.display_image_filename) }}" alt="{{ hero_name }}">
+          {% elif hero_item and hero_item.image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + hero_item.image_filename) }}" alt="{{ hero_name }}">
           {% else %}
-            
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ hero_name }}" style="filter: invert(1); opacity:0.7;">
           {% endif %}
-        </h3>
-        <button id="btn-close-build" class="btn ghost small">Chiudi</button>
+        </div>
+        <div class="workflow-hero-copy">
+          <span class="workflow-eyebrow">{{ hero_label }}</span>
+          <h1 class="workflow-title">{{ hero_name }}</h1>
+          <p class="workflow-subtitle">Codice box {{ box.code }}</p>
+        </div>
       </div>
-      <iframe id="buildFrame" src="" style="flex:1 1 auto; border:none; width:100%; height:100%;"></iframe>
+      <div class="workflow-hero-actions">
+        <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
+        <div class="workflow-hero-buttons">
+          {% if allow_build %}
+            <button id="btn-open-build" class="btn primary"
+                    {% if box.assembly_id %}
+                      data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
+                    {% elif box.product_id %}
+                      data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
+                    {% endif %}
+            >Costruisci</button>
+          {% endif %}
+          <a href="#" class="btn ghost small back-link"
+             onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">← Indietro</a>
+        </div>
+      </div>
     </div>
-  </div>
-  {% endif %}
+    <div class="production-box-body">
+      <div class="production-box-summary">
+        <div class="production-box-stat">
+          <span class="production-box-stat-label">Totale componenti</span>
+          <span class="production-box-stat-value">{{ total_items }}</span>
+        </div>
+        <div class="production-box-stat">
+          <span class="production-box-stat-label">Caricati</span>
+          <span class="production-box-stat-value">{{ loaded_items }}</span>
+        </div>
+        <div class="production-box-stat">
+          <span class="production-box-stat-label">Da lavorare</span>
+          <span class="production-box-stat-value">{{ pending_items if pending_items > 0 else 0 }}</span>
+        </div>
+      </div>
 
-  {# Modal for loading parts/commercial boxes.
-     Reworked to embed the load component page inside an iframe instead of
-     rendering a separate form here.  The iframe loads the load_component
-     endpoint in embedded mode and passes the production box identifier
-     to allow the component to mark the box as completed.  This structure
-     mirrors the assembly build modal to provide a consistent experience.
-  #}
-  {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-  <div id="loadModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; overflow:auto;">
-    <div style="background:var(--glass-bg); margin:40px auto; padding:0; border-radius:16px; max-width:900px; width:95%; height:90vh; max-height:95vh; display:flex; flex-direction:column; overflow:hidden;">
-      <div style="padding:16px; display:flex; justify-content:flex-end; align-items:center; border-bottom:1px solid var(--glass-stroke);">
-        {# Removed the title from the load modal header to declutter the popup.
-           Only the close button remains aligned to the right. #}
-        <button id="btn-close-load" class="btn ghost small">Chiudi</button>
+      <div class="workflow-block">
+        <div class="workflow-block-header">
+          <h4>Documenti checklist</h4>
+          {% if allow_load %}
+            <button id="btn-open-load" type="button" class="btn small primary">Carica documenti</button>
+          {% endif %}
+        </div>
+        {% if box.required_docs and box.required_docs|length > 0 %}
+          <div class="document-section">
+            {% for doc in box.required_docs %}
+              {% set doc_path = doc.path if doc.path else None %}
+              {% set doc_name = doc.name if doc.name else (doc_path.split('/')[-1] if doc_path else 'Documento') %}
+              <div class="document-card">
+                <div class="document-card-header">
+                  <span class="document-card-title">{{ doc_name }}</span>
+                  <div class="document-card-meta">
+                    {% if doc_path %}
+                      <a href="{{ url_for('static', filename=doc_path) }}" target="_blank" class="btn ghost small">Scarica</a>
+                    {% else %}
+                      <span class="muted" style="white-space:nowrap;">—</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="document-card-body">
+                  <p class="muted" style="margin:0;">Contrassegnato nella checklist del componente.</p>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted" style="margin:0;">Nessun documento selezionato nella checklist per questo box.</p>
+        {% endif %}
+        {% if show_row_actions %}
+          <p class="muted" style="margin-top:12px;">Utilizza il pulsante “Carica” accanto a ciascun componente per allegare i documenti.</p>
+        {% endif %}
       </div>
-      <iframe id="loadFrame" src="" style="flex:1 1 auto; border:none; width:100%; height:100%;"></iframe>
+
+      <div class="workflow-block">
+        <div class="workflow-block-header">
+          <h4>Componenti nel box</h4>
+          {% if is_completed %}
+            <span class="status-pill status-ready">Completato</span>
+          {% else %}
+            <span class="status-pill status-progress">In lavorazione</span>
+          {% endif %}
+        </div>
+        {% if total_items == 0 %}
+          <p class="muted" style="margin:0;">Il box è vuoto.</p>
+        {% elif visible_items|length == 0 %}
+          <p class="muted" style="margin:0;">Tutti i componenti sono stati caricati.</p>
+        {% else %}
+          <div class="table-scroll">
+            <table class="production-box-table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">DataMatrix</th>
+                  <th scope="col">Elemento</th>
+                  <th scope="col">Stato</th>
+                  <th scope="col" class="text-right">Download</th>
+                  {% if show_row_actions %}
+                    <th scope="col" class="text-right">Azioni</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% set row = namespace(index=0) %}
+                {% for item in visible_items %}
+                  {% set row.index = row.index + 1 %}
+                  {% set status_class = 'status-ready' if item.status == 'COMPLETATO' else 'status-progress' if item.status in ['IN_LAVORAZIONE', 'IN_PREPARAZIONE'] else 'status-pending' %}
+                  <tr>
+                    <td data-title="#">{{ row.index }}</td>
+                    <td data-title="DataMatrix">
+                      <div class="dm-container" data-code="{{ item.datamatrix_code | e }}"></div>
+                    </td>
+                    <td data-title="Elemento">
+                      <div class="production-box-item">
+                        <span class="production-box-item-name">{{ item.product.name }}</span>
+                        {% if item.product.code %}
+                          <span class="production-box-item-code">{{ item.product.code }}</span>
+                        {% endif %}
+                      </div>
+                    </td>
+                    <td data-title="Stato">
+                      <span class="status-pill {{ status_class }}">{{ item.status }}</span>
+                    </td>
+                    <td data-title="Download" class="text-right">
+                      <button class="btn small ghost dm-download">Scarica&nbsp;Datamatrix</button>
+                    </td>
+                    {% if show_row_actions %}
+                      <td data-title="Azioni" class="text-right">
+                        <button class="btn small primary load-item" data-item-id="{{ item.id }}">Carica</button>
+                      </td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
     </div>
   </div>
-  {% endif %}
 </section>
+
+{% if allow_build %}
+<div id="buildModal" class="workflow-modal" style="display:none;">
+  <div class="workflow-modal-dialog">
+    <div class="workflow-modal-header">
+      <h3 class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
+      <button id="btn-close-build" class="btn ghost small workflow-modal-close">Chiudi</button>
+    </div>
+    <iframe id="buildFrame" src="" class="workflow-modal-frame"></iframe>
+  </div>
+</div>
+{% endif %}
+
+{% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
+<div id="loadModal" class="workflow-modal" style="display:none;" data-base-url="{{ load_base_url or '' }}">
+  <div class="workflow-modal-dialog">
+    <div class="workflow-modal-header">
+      <h3 class="workflow-modal-title">Carica {{ hero_name }}</h3>
+      <button id="btn-close-load" class="btn ghost small workflow-modal-close">Chiudi</button>
+    </div>
+    <iframe id="loadFrame" src="" class="workflow-modal-frame"></iframe>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
 
 {# Load the client-side DataMatrix library.  This script defines a global
    `DATAMatrix` function which creates SVG elements representing the
@@ -196,48 +226,77 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  // For part and commercial boxes, open the load modal and embed the
-  // dedicated load component form when the "Carica" button is clicked.
+  const loadModal = document.getElementById('loadModal');
+  const loadFrame = document.getElementById('loadFrame');
+  const loadBaseUrl = loadModal ? loadModal.getAttribute('data-base-url') : '';
+
+  function resetLoadModal(){
+    if (loadFrame) {
+      loadFrame.onload = null;
+      loadFrame.src = '';
+    }
+    if (loadModal) {
+      loadModal.style.display = 'none';
+      loadModal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function attachLoadWatcher(){
+    if (!loadFrame || !loadModal) {
+      return;
+    }
+    loadFrame.onload = function(){
+      try {
+        const loc = loadFrame.contentWindow.location;
+        const href = loc && loc.href ? loc.href : '';
+        const path = loc && loc.pathname ? loc.pathname : '';
+        if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
+          loadFrame.onload = null;
+          loadFrame.src = '';
+          loadModal.style.display = 'none';
+          loadModal.setAttribute('aria-hidden', 'true');
+          window.location.reload();
+        }
+      } catch (err) {
+        // Ignore errors caused by blank or cross‑origin frames
+      }
+    };
+  }
+
+  function openLoadModal(options){
+    if (!loadModal || !loadFrame) {
+      return;
+    }
+    if (!loadBaseUrl) {
+      alert('Impossibile aprire il caricamento per questo box.');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('embedded', '1');
+    params.set('box_id', '{{ box.id }}');
+    if (options && options.itemId) {
+      params.set('item_id', options.itemId);
+    }
+    if (options && options.autoSelect) {
+      params.set('auto_select', '1');
+    }
+    attachLoadWatcher();
+    loadFrame.src = loadBaseUrl + '?' + params.toString();
+    loadModal.style.display = 'flex';
+    loadModal.setAttribute('aria-hidden', 'false');
+  }
+
   const btnOpenLoad = document.getElementById('btn-open-load');
   if (btnOpenLoad) {
-    btnOpenLoad.addEventListener('click', function() {
-      const modal = document.getElementById('loadModal');
-      const iframe = document.getElementById('loadFrame');
-      if (modal && iframe) {
-        iframe.src = '/inventory/load/{{ box.root_structure.id }}?embedded=1&box_id={{ box.id }}';
-        modal.style.display = 'block';
-        // Monitor the iframe load event to detect when the form has redirected
-        iframe.onload = function() {
-          try {
-            const loc = iframe.contentWindow.location;
-            const href = loc && loc.href ? loc.href : '';
-            const path = loc && loc.pathname ? loc.pathname : '';
-            // If the iframe navigated away from the load page, treat it as completion
-            if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-              iframe.onload = null;
-              modal.style.display = 'none';
-              iframe.src = '';
-              // Reload to reflect updated stock and box status
-              window.location.reload();
-            }
-          } catch (err) {
-            // Ignore errors caused by blank or cross‑origin frames
-          }
-        };
-      }
+    btnOpenLoad.addEventListener('click', function(){
+      openLoadModal({ autoSelect: true });
     });
   }
-  // Close the load modal and reset the iframe
+
   const btnCloseLoad = document.getElementById('btn-close-load');
   if (btnCloseLoad) {
-    btnCloseLoad.addEventListener('click', function() {
-      const modal = document.getElementById('loadModal');
-      const iframe = document.getElementById('loadFrame');
-      if (iframe) {
-        iframe.onload = null;
-        iframe.src = '';
-      }
-      if (modal) modal.style.display = 'none';
+    btnCloseLoad.addEventListener('click', function(){
+      resetLoadModal();
     });
   }
   // For assembly and product boxes, open the build modal when the Costruisci button is clicked
@@ -251,7 +310,8 @@ document.addEventListener('DOMContentLoaded', function(){
         const buildUrl = btnBuild.getAttribute('data-build-url');
         if (!buildUrl) return;
         iframe.src = buildUrl;
-        modal.style.display = 'block';
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
         // When the iframe finishes loading, check whether it has navigated
         // away from the internal build pages (/inventory/build or
         // /inventory/build_product).  When the path is different we assume
@@ -264,6 +324,7 @@ document.addEventListener('DOMContentLoaded', function(){
             if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
               iframe.onload = null;
               modal.style.display = 'none';
+              modal.setAttribute('aria-hidden', 'true');
               iframe.src = '';
               alert('Costruzione completata con successo');
               window.location.reload();
@@ -282,82 +343,42 @@ document.addEventListener('DOMContentLoaded', function(){
       const modal = document.getElementById('buildModal');
       const iframe = document.getElementById('buildFrame');
       if (iframe) {
-        // Clear the iframe to release resources.  Detach any load
-        // handler before resetting the src so that closing the modal
-        // does not trigger the completion logic erroneously.
         iframe.onload = null;
         iframe.src = '';
       }
-      if (modal) modal.style.display = 'none';
+      if (modal) {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+      }
     });
   }
 
   // -----------------------------------------------------------------------------
   // DataMatrix generation and download functionality
-  //
-  // Each stock item row contains a `.dm-container` div with a `data-code`
-  // attribute holding the DataMatrix payload, and a `.dm-download` button to
-  // trigger downloading the DataMatrix as an image.  Use the global
-  // `DATAMatrix` function to generate an SVG for each container.  Attach a
-  // click handler to the download buttons that converts the SVG to a PNG
-  // using a canvas and initiates a download.
+  // -----------------------------------------------------------------------------
   const dmContainers = document.querySelectorAll('.dm-container');
   dmContainers.forEach(function(container) {
     const code = container.getAttribute('data-code');
     if (code) {
       try {
-        // Generate an SVG element for the DataMatrix.  Specify a
-        // reasonable dimension so that the code is legible; the library
-        // automatically scales the viewBox accordingly.  The
-        // `DATAMatrix` function returns an SVG element.
-        // Generate with smaller dimensions (half size) and white background
         const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-        // Clear any previous contents and append the generated SVG.
         container.innerHTML = '';
         container.appendChild(svg);
       } catch (err) {
         console.error('Failed to generate DataMatrix for', code, err);
-        // As a fallback, show the code as plain text.
         container.textContent = code;
       }
     }
   });
 
-  // When lot management is disabled, each stock item provides its own
-  // "Carica" button.  Attach handlers to these buttons to open the
-  // load modal for the corresponding item.  Pass the item id as a
-  // query parameter so that the API can mark individual items as
-  // completed.  Prevent the event from bubbling to the row click
-  // handler (which navigates back to the list) by calling
-  // stopPropagation().
   const perItemButtons = document.querySelectorAll('.load-item');
   if (perItemButtons && perItemButtons.length > 0) {
     perItemButtons.forEach(function(btn) {
       btn.addEventListener('click', function(evt) {
         evt.stopPropagation();
         const itemId = this.getAttribute('data-item-id');
-        const modal = document.getElementById('loadModal');
-        const iframe = document.getElementById('loadFrame');
-        if (modal && iframe && itemId) {
-          iframe.src = '/inventory/load/{{ box.root_structure.id }}?embedded=1&box_id={{ box.id }}&item_id=' + encodeURIComponent(itemId);
-          modal.style.display = 'block';
-          iframe.onload = function() {
-            try {
-              const loc = iframe.contentWindow.location;
-              const href = loc && loc.href ? loc.href : '';
-              const path = loc && loc.pathname ? loc.pathname : '';
-              // If the iframe navigated away from the load page, treat it as completion
-              if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-                iframe.onload = null;
-                modal.style.display = 'none';
-                iframe.src = '';
-                // Reload to reflect updated stock and box status
-                window.location.reload();
-              }
-            } catch (err) {
-              // Ignore errors caused by blank or cross‑origin frames
-            }
-          };
+        if (itemId) {
+          openLoadModal({ itemId: itemId, autoSelect: true });
         }
       });
     });
@@ -374,9 +395,6 @@ document.addEventListener('DOMContentLoaded', function(){
         const url = URL.createObjectURL(blob);
         const img = new Image();
         const canvas = document.createElement('canvas');
-        // Use provided size or fall back to the element's bounding box
-        // dimensions.  Without explicit sizing the canvas would default
-        // to 300x150 which distorts the DataMatrix.
         const rect = svgElement.getBoundingClientRect();
         const width = size || rect.width || 120;
         const height = size || rect.height || 120;
@@ -384,7 +402,6 @@ document.addEventListener('DOMContentLoaded', function(){
         canvas.height = height;
         img.onload = function() {
           const ctx = canvas.getContext('2d');
-          // Clear any existing content
           ctx.clearRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
           URL.revokeObjectURL(url);
@@ -406,47 +423,37 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  // Attach download functionality to each `.dm-download` button.  When
-  // clicked, the corresponding DataMatrix SVG is converted to a PNG and
-  // downloaded.  The button is expected to be placed immediately after
-  // the `.dm-container` div in the markup; this handler locates the
-  // container using `previousElementSibling`.  If no SVG is found the
-  // code falls back to generating a new one from the data-code attribute.
+  // Attach download handlers to each DataMatrix download button.  The
+  // handler locates the sibling SVG, converts it to PNG and triggers a
+  // download with a filename derived from the product code when available.
   const downloadButtons = document.querySelectorAll('.dm-download');
-  downloadButtons.forEach(function(btn) {
-    btn.addEventListener('click', async function(ev) {
-      ev.preventDefault();
-      // The DataMatrix container is the element with class .dm-container within
-      // the same table row as the clicked button.  Locate it using closest().
-      const row = btn.closest('tr');
-      const container = row ? row.querySelector('.dm-container') : null;
-      if (!container) return;
-      let svgEl = container.querySelector('svg');
-      const code = container.getAttribute('data-code');
-      if (!svgEl && code) {
-        try {
-          // Regenerate DataMatrix with the same size and white background for download
-          svgEl = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-        } catch (err) {
-          console.error('Error regenerating DataMatrix for download:', err);
-        }
-      }
-      if (svgEl) {
-        try {
-          const dataUrl = await svgToPngDataUrl(svgEl);
+  if (downloadButtons && downloadButtons.length > 0) {
+    downloadButtons.forEach(function(btn) {
+      btn.addEventListener('click', function(evt) {
+        evt.preventDefault();
+        const row = btn.closest('tr');
+        if (!row) return;
+        const svg = row.querySelector('.dm-container svg');
+        if (!svg) return;
+        svgToPngDataUrl(svg, 240).then(function(dataUrl) {
           const link = document.createElement('a');
+          const codeCell = row.querySelector('.production-box-item-code');
+          const baseName = codeCell ? codeCell.textContent.trim() : 'datamatrix';
           link.href = dataUrl;
-          link.download = (code || 'datamatrix') + '.png';
+          link.download = baseName ? baseName + '-datamatrix.png' : 'datamatrix.png';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-        } catch (err) {
-          console.error('Unable to convert DataMatrix to PNG:', err);
-          alert('Impossibile generare l’immagine del DataMatrix');
-        }
-      }
+        }).catch(function(err) {
+          console.error('Unable to download DataMatrix', err);
+          alert('Impossibile scaricare il Datamatrix.');
+        });
+      });
     });
-  });
+  }
+
+  // Nessun bottone extra duplicato: il pulsante "Carica documenti"
+  // utilizza direttamente l'handler definito sopra.
 });
 </script>
-{% endblock %}
+

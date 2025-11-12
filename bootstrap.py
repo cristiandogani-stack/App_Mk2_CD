@@ -20,6 +20,16 @@ with app.app_context():
         print(f'Password: {password}')
         print('Salva queste credenziali e cambiale dal codice/DB appena possibile.')
 
+    cristian = User.query.filter_by(username='cristian').first()
+    if not cristian:
+        cristian = User(username='cristian', role='admin', active=True)
+        cristian.set_password('admin')
+        db.session.add(cristian)
+        print('--- UTENTE AGGIUNTO ---')
+        print('Username: cristian')
+        print('Password: admin')
+        print('Ruolo: admin')
+
     defaults = [
         ('Dashboard', 'dashboard', 'dashboard.index', True, 'squares'),
         ('Admin', 'admin', 'admin.index', True, 'gear'),

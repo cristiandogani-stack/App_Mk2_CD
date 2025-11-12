@@ -163,28 +163,6 @@ a:focus{
   box-shadow: 0 10px 30px rgba(15,23,42,0.06);
 }
 
-html[data-theme='dark'] .app-header{
-  background: rgba(15,23,42,0.82);
-  box-shadow: 0 12px 32px rgba(2,6,23,0.55);
-}
-
-.header-inner{
-  max-width: 1200px;
-  margin: 0 auto;
-  min-height: var(--header-height);
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 0 12px;
-}
-
-.brand{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .header-inner{
   width: min(1180px, 100%);
   height: var(--header-height);

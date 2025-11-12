@@ -37,7 +37,7 @@
   {# Provide complete navigation across warehouse categories in the products explosion view.
      This allows operators to jump between assemblies, parts, commercial items, products
      and the history from this page. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.list_assemblies') }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
     <a href="{{ url_for('inventory.list_parts') }}"

@@ -39,11 +39,21 @@
         navigating deeper into its subpages.  Without this logic the
         navigation bar would deselect "Magazzino" when visiting
         "/inventory/products", "/inventory/assemblies", etc.
+        When a blueprint explicitly sets ``active_module`` (for example the
+        production module when delegating to inventory views) use that value
+        to force the highlight.
       #}
+      {% set cur_ep = request.endpoint or '' %}
+      {% set detected_bp = (cur_ep.split('.')|first) %}
+      {% set forced_bp = None %}
+      {% if active_module is defined and active_module %}
+        {% set forced_bp = active_module %}
+      {% elif g is defined and g.active_module is defined and g.active_module %}
+        {% set forced_bp = g.active_module %}
+      {% endif %}
+      {% set cur_bp = forced_bp if forced_bp else detected_bp %}
       {% for m in enabled_modules %}
         {% set mod_bp = (m.endpoint.split('.')|first) %}
-        {% set cur_ep = request.endpoint or '' %}
-        {% set cur_bp = (cur_ep.split('.')|first) %}
         {% set is_active = (mod_bp == cur_bp) %}
         {# Rename the top‑level "Prodotti" module to "Anagrafiche" when rendering the navigation.  This
            ensures the link label reflects the new terminology without
@@ -68,11 +78,19 @@
       Mobile navigation highlights the active module using the same
       blueprint matching logic as the desktop navigation.  This keeps
       the "Magazzino" tab highlighted when browsing its internal pages.
+      Respect the ``active_module`` override when provided.
     #}
+    {% set cur_ep = request.endpoint or '' %}
+    {% set detected_bp = (cur_ep.split('.')|first) %}
+    {% set forced_bp = None %}
+    {% if active_module is defined and active_module %}
+      {% set forced_bp = active_module %}
+    {% elif g is defined and g.active_module is defined and g.active_module %}
+      {% set forced_bp = g.active_module %}
+    {% endif %}
+    {% set cur_bp = forced_bp if forced_bp else detected_bp %}
     {% for m in enabled_modules %}
       {% set mod_bp = (m.endpoint.split('.')|first) %}
-      {% set cur_ep = request.endpoint or '' %}
-      {% set cur_bp = (cur_ep.split('.')|first) %}
       {% set is_active = (mod_bp == cur_bp) %}
       {# As on desktop, rename the "Prodotti" module to "Anagrafiche" for the mobile navigation. #}
       {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}

@@ -1,0 +1,5 @@
+Assemblea: assieme (ID: 144)
+Componenti associati:
+ - comp1 (ID: 145)
+Documenti dell'assieme:
+ - Step/tavola

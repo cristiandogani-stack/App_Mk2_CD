@@ -229,6 +229,22 @@ def create_app(config_class=Config):
             if 'guiding_part' not in cm_cols:
                 conn.execute(text('ALTER TABLE component_masters ADD COLUMN guiding_part BOOLEAN'))
 
+            # -----------------------------------------------------------------
+            # Ensure ``username`` column exists on the ``users`` table and
+            # populate it for legacy records that previously stored only
+            # email addresses.  The username column enables authentication
+            # without relying on email addresses while maintaining
+            # backwards compatibility with existing databases.
+            res_users = conn.execute(text('PRAGMA table_info(users)')).fetchall()
+            user_cols = [row[1] for row in res_users]
+            if 'username' not in user_cols:
+                conn.execute(text('ALTER TABLE users ADD COLUMN username TEXT'))
+            conn.execute(text("UPDATE users SET username = LOWER(username) WHERE username IS NOT NULL AND username <> ''"))
+            conn.execute(text("UPDATE users SET username = LOWER(substr(email, 1, instr(email, '@') - 1)) WHERE (username IS NULL OR username = '') AND email LIKE '%@%'"))
+            conn.execute(text("UPDATE users SET username = LOWER(email) WHERE (username IS NULL OR username = '') AND email IS NOT NULL"))
+            conn.execute(text("UPDATE users SET username = 'user_' || id WHERE (username IS NULL OR username = '')"))
+
+            conn.commit()
             conn.close()
         except Exception:
             # Silently ignore errors during the schema check.  Missing

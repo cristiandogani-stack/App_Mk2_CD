@@ -4,7 +4,7 @@
 <section class="section">
   <h2 class="section-title">Gestione Utenti</h2>
   <p class="section-subtitle">Visualizza e gestisci gli account registrati.</p>
-  <div style="margin-bottom:12px;">
+  <div style="margin-bottom:12px; display:flex; gap: 10px;">
     <a class="btn primary" href="{{ url_for('admin.new_user') }}">Nuovo utente</a>
   </div>
   {% if users|length == 0 %}
@@ -14,10 +14,11 @@
       {% for u in users %}
       <div class="list-row">
         <div class="list-info">
-          <div class="list-title">{{ u.email }}</div>
+          <div class="list-title">{{ u.username }}</div>
           <div class="list-subtitle">Ruolo: {{ u.role }}</div>
         </div>
         <div class="list-actions">
+          <a class="btn ghost small" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Modifica</a>
           <form method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn danger small" type="submit" onclick="return confirm('Sei sicuro di voler eliminare questo utente?');">Elimina</button>

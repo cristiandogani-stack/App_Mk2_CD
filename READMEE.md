@@ -15,12 +15,12 @@ cp .env.example .env
 python bootstrap.py          # crea DB + admin temporaneo
 python run.py
 ```
-Login su http://127.0.0.1:5000 (email e password stampate da bootstrap).
+Login su http://127.0.0.1:5000 (username e password stampate da bootstrap).
 
 ### Se non riesci ad accedere
 Usa gli strumenti:
 ```bash
 python manage.py list-users
-python manage.py reset-password          # inserisci email admin e nuova password
+python manage.py reset-password          # inserisci username admin e nuova password
 python manage.py create-user             # per crearne uno nuovo
 ```

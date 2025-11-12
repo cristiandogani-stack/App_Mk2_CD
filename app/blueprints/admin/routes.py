@@ -2844,7 +2844,7 @@ def define_structure_node_defaults(node_id: int):
 def users():
     """Elenca tutti gli utenti registrati."""
     admin_required()
-    users = User.query.order_by(User.email.asc()).all()
+    users = User.query.order_by(User.username.asc()).all()
     return render_template('admin/users.html', users=users)
 
 
@@ -2854,21 +2854,48 @@ def new_user():
     """Crea un nuovo utente."""
     admin_required()
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
+        username = request.form.get('username', '').strip().lower()
         password = request.form.get('password', '')
         role = request.form.get('role', 'user') or 'user'
-        if not email or not password:
-            flash('Email e password sono obbligatorie.', 'danger')
-        elif User.query.filter_by(email=email).first():
-            flash('Esiste già un utente con questa email.', 'warning')
+        if not username or not password:
+            flash('Username e password sono obbligatorie.', 'danger')
+        elif User.query.filter_by(username=username).first():
+            flash('Esiste già un utente con questo username.', 'warning')
         else:
-            u = User(email=email, role=role)
+            u = User(username=username, role=role)
             u.set_password(password)
             db.session.add(u)
             db.session.commit()
             flash('Utente creato.', 'success')
             return redirect(url_for('admin.users'))
     return render_template('admin/new_user.html')
+
+
+@admin_bp.route('/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def edit_user(user_id: int):
+    """Aggiorna username, ruolo o password di un utente esistente."""
+    admin_required()
+    user = User.query.get_or_404(user_id)
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip().lower()
+        role = request.form.get('role', 'user') or 'user'
+        password = request.form.get('password', '')
+
+        if not username:
+            flash('Lo username è obbligatorio.', 'danger')
+        elif User.query.filter(User.username == username, User.id != user.id).first():
+            flash('Esiste già un utente con questo username.', 'warning')
+        else:
+            user.username = username
+            user.role = role
+            if password:
+                user.set_password(password)
+            db.session.commit()
+            flash('Utente aggiornato.', 'success')
+            return redirect(url_for('admin.users'))
+
+    return render_template('admin/edit_user.html', user=user)
 
 
 @admin_bp.route('/users/delete/<int:user_id>', methods=['POST'])

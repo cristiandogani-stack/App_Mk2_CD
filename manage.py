@@ -13,17 +13,24 @@ def list_users():
             print("Nessun utente presente.")
             return
         for u in users:
-            print(f"- id={u.id} username={u.username} role={u.role} active={u.active}")
+            print(f"- id={u.id} username={u.username} email={u.email} role={u.role} active={u.active}")
 
 def create_user():
     with app.app_context():
         username = input("Username: ").strip().lower()
+        email = input("Email: ").strip().lower()
         role = input("Ruolo [admin/user] (default: user): ").strip().lower() or "user"
         pwd = getpass("Password: ")
+        if not username or not email:
+            print("Username ed email sono obbligatori.")
+            return
         if User.query.filter_by(username=username).first():
             print("Utente già esistente.")
             return
-        u = User(username=username, role=role, active=True)
+        if User.query.filter_by(email=email).first():
+            print("Esiste già un utente con questa email.")
+            return
+        u = User(username=username, email=email, role=role, active=True)
         u.set_password(pwd)
         db.session.add(u)
         db.session.commit()

@@ -1,36 +1,57 @@
 <!doctype html>
-<!-- Force the application to use the dark theme by default.  The data-theme
-     attribute is set to "dark" so the CSS variables defined for the dark
-     palette take effect regardless of user or system preferences. -->
-<html lang="it" data-theme="dark">
+<html lang="it">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Argal{% endblock %}</title>
   <meta name="color-scheme" content="dark light">
+  <script>
+    (function(){
+      try{
+        var stored = localStorage.getItem('theme');
+        if(stored && stored !== 'system'){
+          document.documentElement.setAttribute('data-theme', stored);
+          if(stored === 'light'){
+            document.documentElement.style.colorScheme = 'light dark';
+          }else if(stored === 'dark'){
+            document.documentElement.style.colorScheme = 'dark light';
+          }
+        }else if(stored === 'system'){
+          document.documentElement.removeAttribute('data-theme');
+          document.documentElement.style.colorScheme = '';
+        }
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if(meta){
+          if(stored === 'light'){ meta.content = 'light dark'; }
+          else if(stored === 'dark'){ meta.content = 'dark light'; }
+          else if(stored === 'system'){ meta.content = 'dark light'; }
+        }
+      }catch(e){}
+    })();
+  </script>
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
 <body>
-  <div class="bg-aurora"></div>
 
   {# Hide the header when rendering in embedded mode (e.g. inside an iframe).
      The "embedded" variable can be passed from the view to suppress the
      navigation and header.  #}
   {% if current_user.is_authenticated and not embedded %}
-  <header class="app-header glass">
-    <div class="brand">
-      {# Updated logo to use the new PNG provided by the user and wrap it in a link
-         to the dashboard.  Making the logo clickable allows users to
-         quickly return to the main dashboard from anywhere in the app. #}
-      <a href="{{ url_for('dashboard.index') }}" class="brand-link" style="display:inline-block;">
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo">
-      </a>
-      {# Removed brand name to display only the logo #}
-    </div>
-    <nav class="nav-desktop">
+  <header class="app-header">
+    <div class="header-inner glass">
+      <div class="brand">
+        {# Updated logo to use the new PNG provided by the user and wrap it in a link
+           to the dashboard.  Making the logo clickable allows users to
+           quickly return to the main dashboard from anywhere in the app. #}
+        <a href="{{ url_for('dashboard.index') }}" class="brand-link" style="display:inline-block;">
+          <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo">
+        </a>
+        {# Removed brand name to display only the logo #}
+      </div>
+      <nav class="nav-desktop">
       {#
         Highlight the active top‑level module by comparing the blueprint
         portion of the current request endpoint with that of each module.
@@ -61,15 +82,16 @@
         {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
         <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
       {% endfor %}
-    </nav>
-    {# The global search bar has been removed from the header.  Search
-       functionality is now available within the product pages themselves. #}
-    <div class="header-actions">
-      {# The theme toggle has been removed.  The application always
-         operates in dark mode, so only the logout button remains here. #}
-      <a class="btn btn-ghost" href="{{ url_for('auth.logout') }}">Esci</a>
+      </nav>
+      {# The global search bar has been removed from the header.  Search
+         functionality is now available within the product pages themselves. #}
+      <div class="header-actions">
+        {# The theme toggle has been removed.  The application always
+           operates in dark mode, so only the logout button remains here. #}
+        <a class="btn btn-ghost" href="{{ url_for('auth.logout') }}">Esci</a>
+      </div>
+      <button class="hamburger" id="hamburger" aria-label="Apri menu">☰</button>
     </div>
-    <button class="hamburger" id="hamburger" aria-label="Apri menu">☰</button>
   </header>
 
   {# Mobile navigation: hidden in embedded mode #}
@@ -96,11 +118,15 @@
       {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
       <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
     {% endfor %}
+    <button class="nav-link toggle" id="themeToggleMobile" data-theme-button type="button">
+      <span class="icon" aria-hidden="true"></span>
+      <span class="label">Tema</span>
+    </button>
     <a class="nav-link" href="{{ url_for('auth.logout') }}">Esci</a>
   </nav>
   {% endif %}
 
-  <main class="container">
+  <main id="mainContent" class="page-content">
     {# Display flash messages from Flask.  Without this the user never sees success/error alerts #}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}

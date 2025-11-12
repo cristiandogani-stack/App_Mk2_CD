@@ -25,7 +25,7 @@
   {# Tab navigation across product views.  Use links rather than buttons so
      each tab navigates to a dedicated view.  The active tab is determined
      by the ``active_tab`` parameter passed from the view. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     {# Removed "Prodotto" tab: only specialised views remain. #}
     <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
@@ -264,26 +264,6 @@
       window.currentProductId = {{ product.id }};
     });
 
-    function redirectToProductionOverview(boxType, boxId) {
-      const params = new URLSearchParams();
-      const tab = (boxType || '').toString().trim().toUpperCase();
-      if (tab) {
-        params.set('tab', tab);
-      }
-      if (boxId) {
-        params.set('box', boxId);
-      }
-      let url = '/production/';
-      const query = params.toString();
-      if (query) {
-        url += `?${query}`;
-      }
-      if (boxId) {
-        url += `#box-${boxId}`;
-      }
-      window.location.href = url;
-    }
-
     /**
      * Prompt the user to enter a quantity and create a reservation via the API.
      * Optional parameters allow overriding the default box type and
@@ -317,9 +297,9 @@
         .then(data => {
           const codes = data.items.map(item => item.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
+          // Redirect to the production box detail page
           if (data.productionBoxId) {
-            const targetType = data.boxType || payload.boxType || 'PARTE';
-            redirectToProductionOverview(targetType, data.productionBoxId);
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
           }
         })
         .catch(err => {
@@ -434,7 +414,7 @@
           const codes = data.items.map(i => i.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            redirectToProductionOverview(data.boxType || 'ASSIEME', data.productionBoxId);
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
           }
         })
         .catch(err => {

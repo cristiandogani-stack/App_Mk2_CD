@@ -2855,14 +2855,17 @@ def new_user():
     admin_required()
     if request.method == 'POST':
         username = request.form.get('username', '').strip().lower()
+        email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
         role = request.form.get('role', 'user') or 'user'
-        if not username or not password:
-            flash('Username e password sono obbligatorie.', 'danger')
+        if not username or not password or not email:
+            flash('Username, email e password sono obbligatorie.', 'danger')
         elif User.query.filter_by(username=username).first():
             flash('Esiste già un utente con questo username.', 'warning')
+        elif User.query.filter_by(email=email).first():
+            flash('Esiste già un utente con questa email.', 'warning')
         else:
-            u = User(username=username, role=role)
+            u = User(username=username, email=email, role=role)
             u.set_password(password)
             db.session.add(u)
             db.session.commit()
@@ -2879,15 +2882,19 @@ def edit_user(user_id: int):
     user = User.query.get_or_404(user_id)
     if request.method == 'POST':
         username = request.form.get('username', '').strip().lower()
+        email = request.form.get('email', '').strip().lower()
         role = request.form.get('role', 'user') or 'user'
         password = request.form.get('password', '')
 
-        if not username:
-            flash('Lo username è obbligatorio.', 'danger')
+        if not username or not email:
+            flash('Username ed email sono obbligatori.', 'danger')
         elif User.query.filter(User.username == username, User.id != user.id).first():
             flash('Esiste già un utente con questo username.', 'warning')
+        elif User.query.filter(User.email == email, User.id != user.id).first():
+            flash('Esiste già un utente con questa email.', 'warning')
         else:
             user.username = username
+            user.email = email
             user.role = role
             if password:
                 user.set_password(password)

@@ -20,7 +20,7 @@
   <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
   <h2 class="section-title">Magazzino: {{ product.name }} – Componenti commerciali</h2>
   {# Tab navigation for the product views. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     {# Removed "Prodotto" tab from navigation. #}
     <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
@@ -128,26 +128,6 @@
     document.addEventListener('DOMContentLoaded', function(){
       window.currentProductId = {{ product.id }};
     });
-    function redirectToProductionOverview(boxType, boxId) {
-      const params = new URLSearchParams();
-      const tab = (boxType || '').toString().trim().toUpperCase();
-      if (tab) {
-        params.set('tab', tab);
-      }
-      if (boxId) {
-        params.set('box', boxId);
-      }
-      let url = '/production/';
-      const query = params.toString();
-      if (query) {
-        url += `?${query}`;
-      }
-      if (boxId) {
-        url += `#box-${boxId}`;
-      }
-      window.location.href = url;
-    }
-
     /**
      * Create a reservation for a component.  Accept optional boxType and
      * componentCode parameters to override the default values so that
@@ -174,8 +154,7 @@
           const codes = data.items.map(i => i.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            const targetType = data.boxType || payload.boxType || 'COMMERCIALE';
-            redirectToProductionOverview(targetType, data.productionBoxId);
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
           }
         })
         .catch(err => { alert('Si è verificato un errore: ' + err.message); console.error(err); });

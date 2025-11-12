@@ -16,7 +16,7 @@
 <section class="section">
   <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
   <h2 class="section-title">Magazzino: {{ product.name }} – Componenti caricati</h2>
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}"
        class="btn small ghost">Prodotto</a>
     <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}" class="btn small ghost">Assiemi</a>

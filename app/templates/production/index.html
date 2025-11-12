@@ -58,8 +58,7 @@
           <div class="box-grid">
             {% for box in cat_boxes %}
               {% set prod = box.stock_items[0].product if box.stock_items else None %}
-              {% set highlight = focused_box_id and box.id == focused_box_id %}
-              <a id="box-{{ box.id }}" class="box-card{% if highlight %} highlight{% endif %}" data-box-type="{{ box.box_type }}" href="{{ url_for('production.production_box_view', box_id=box.id) }}">
+              <a class="box-card" href="{{ url_for('production.production_box_view', box_id=box.id) }}">
                 <span class="box-type-badge" style="background:{{ type_colors.get(box.box_type, '#6366f1') }};">
                   {{ type_letters.get(box.box_type, '?') }}
                 </span>
@@ -247,12 +246,6 @@
   min-height: 200px;
 }
 
-.box-card.highlight,
-.box-card:target {
-  border-color: rgba(56, 189, 248, 0.68);
-  box-shadow: 0 16px 36px rgba(56, 189, 248, 0.35);
-}
-
 .box-card:hover {
   transform: translateY(-4px);
   border-color: rgba(59, 130, 246, 0.6);
@@ -370,8 +363,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   const panelKeys = new Set(panels.map((panel) => panel.getAttribute('data-tab-panel')));
-  const initialTab = {{ initial_tab|tojson }};
-  const focusedBoxId = {{ focused_box_id|tojson }};
 
   function activateTab(target) {
     buttons.forEach((btn) => {
@@ -388,17 +379,13 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   let initial = buttons[0].getAttribute('data-tab-target');
-  if (initialTab && panelKeys.has(initialTab)) {
-    initial = initialTab;
-  } else {
-    try {
-      const stored = sessionStorage.getItem('productionTab');
-      if (stored && panelKeys.has(stored)) {
-        initial = stored;
-      }
-    } catch (err) {
-      // ignore storage errors
+  try {
+    const stored = sessionStorage.getItem('productionTab');
+    if (stored && panelKeys.has(stored)) {
+      initial = stored;
     }
+  } catch (err) {
+    // ignore storage errors
   }
 
   activateTab(initial);
@@ -409,19 +396,6 @@ document.addEventListener('DOMContentLoaded', function() {
       activateTab(target);
     });
   });
-
-  if (focusedBoxId) {
-    const target = document.getElementById(`box-${focusedBoxId}`);
-    if (target) {
-      try {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (err) {
-        target.scrollIntoView();
-      }
-      target.classList.add('highlight');
-      setTimeout(() => target.classList.remove('highlight'), 3200);
-    }
-  }
 });
 </script>
 {% endblock %}

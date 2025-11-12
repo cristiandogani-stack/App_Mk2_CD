@@ -499,8 +499,7 @@ def create_reservation() -> Any:
     response = {
         'reservationId': reservation.id,
         'productionBoxId': primary_box_id,
-        'items': items_data,
-        'boxType': box_type,
+        'items': items_data
     }
     # Include list of all box ids when more than one box has been
     # created.  Front‑end code can optionally use this field to

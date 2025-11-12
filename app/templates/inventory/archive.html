@@ -57,7 +57,7 @@
      ``active_tab`` variable passed from the view controls which button
      appears highlighted.  When adding new tabs (e.g. parts, assemblies)
      ensure their order matches the other inventory views. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.index') }}"
        class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
     <a href="{{ url_for('inventory.archive') }}"

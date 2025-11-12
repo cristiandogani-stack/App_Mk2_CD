@@ -37,7 +37,7 @@
   {# Provide complete navigation across warehouse categories in the products explosion view.
      This allows operators to jump between assemblies, parts, commercial items, products
      and the history from this page. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.list_assemblies') }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
     <a href="{{ url_for('inventory.list_parts') }}"
@@ -253,26 +253,6 @@
     the guided build procedure.  Errors are surfaced via alert dialogs.
   #}
   <script>
-function redirectToProductionOverview(boxType, boxId) {
-  const params = new URLSearchParams();
-  const tab = (boxType || '').toString().trim().toUpperCase();
-  if (tab) {
-    params.set('tab', tab);
-  }
-  if (boxId) {
-    params.set('box', boxId);
-  }
-  let url = '/production/';
-  const query = params.toString();
-  if (query) {
-    url += `?${query}`;
-  }
-  if (boxId) {
-    url += `#box-${boxId}`;
-  }
-  window.location.href = url;
-}
-
 function prenotaProdotto(productId, productName, maxQty) {
     if (!maxQty || maxQty <= 0) {
       alert('Nessuna unità prenotabile disponibile.');
@@ -304,7 +284,7 @@ function prenotaProdotto(productId, productName, maxQty) {
         const codes = (data.items || []).map(i => i.datamatrix).join(', ');
         alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
         if (data.productionBoxId) {
-          redirectToProductionOverview(data.boxType || 'PRODOTTO', data.productionBoxId);
+          window.location.href = '/inventory/production_box/' + data.productionBoxId;
         }
       })
       .catch(err => {

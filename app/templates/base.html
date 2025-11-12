@@ -1,13 +1,34 @@
 <!doctype html>
-<!-- Force the application to use the dark theme by default.  The data-theme
-     attribute is set to "dark" so the CSS variables defined for the dark
-     palette take effect regardless of user or system preferences. -->
-<html lang="it" data-theme="dark">
+<html lang="it">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Argal{% endblock %}</title>
   <meta name="color-scheme" content="dark light">
+  <script>
+    (function(){
+      try{
+        var stored = localStorage.getItem('theme');
+        if(stored && stored !== 'system'){
+          document.documentElement.setAttribute('data-theme', stored);
+          if(stored === 'light'){
+            document.documentElement.style.colorScheme = 'light dark';
+          }else if(stored === 'dark'){
+            document.documentElement.style.colorScheme = 'dark light';
+          }
+        }else if(stored === 'system'){
+          document.documentElement.removeAttribute('data-theme');
+          document.documentElement.style.colorScheme = '';
+        }
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if(meta){
+          if(stored === 'light'){ meta.content = 'light dark'; }
+          else if(stored === 'dark'){ meta.content = 'dark light'; }
+          else if(stored === 'system'){ meta.content = 'dark light'; }
+        }
+      }catch(e){}
+    })();
+  </script>
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
@@ -97,11 +118,15 @@
       {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
       <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
     {% endfor %}
+    <button class="nav-link toggle" id="themeToggleMobile" data-theme-button type="button">
+      <span class="icon" aria-hidden="true"></span>
+      <span class="label">Tema</span>
+    </button>
     <a class="nav-link" href="{{ url_for('auth.logout') }}">Esci</a>
   </nav>
   {% endif %}
 
-  <main class="container">
+  <main id="mainContent" class="page-content">
     {# Display flash messages from Flask.  Without this the user never sees success/error alerts #}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}

@@ -212,14 +212,14 @@
           if (filtered.length === 0) {
             html = '<p class="muted">Nessun componente caricato per questo elemento.</p>';
           } else {
-            html += '<table class="table table-compact">';
+            html += '<table class="glass" style="width:100%; border-collapse:collapse;">';
             html += '<thead><tr><th>#</th><th>DataMatrix</th><th>Box</th><th>Stato</th></tr></thead><tbody>';
             filtered.forEach((it, idx) => {
-              html += '<tr>';
-              html += '<td>' + (idx + 1) + '</td>';
-              html += '<td style="font-family:monospace;">' + it.datamatrix + '</td>';
-              html += '<td>' + (it.boxId || '—') + '</td>';
-              html += '<td>' + (it.status || 'COMPLETATO') + '</td>';
+              html += '<tr style="border-bottom:1px solid var(--glass-stroke);">';
+              html += '<td style="padding:6px;">' + (idx + 1) + '</td>';
+              html += '<td style="padding:6px; font-family:monospace;">' + it.datamatrix + '</td>';
+              html += '<td style="padding:6px;">' + (it.boxId || '—') + '</td>';
+              html += '<td style="padding:6px;">' + (it.status || 'COMPLETATO') + '</td>';
               html += '</tr>';
             });
             html += '</tbody></table>';

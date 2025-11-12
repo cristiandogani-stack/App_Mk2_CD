@@ -126,33 +126,6 @@
   #}
   <script>
   document.addEventListener('DOMContentLoaded', function() {
-    function applyDeferredAttributes(img) {
-      if (!img || img.classList.contains('logo') || img.dataset.priority === 'high') {
-        return;
-      }
-      if (!img.hasAttribute('loading')) {
-        img.setAttribute('loading', 'lazy');
-      }
-      if (!img.hasAttribute('decoding')) {
-        img.setAttribute('decoding', 'async');
-      }
-      if (!img.hasAttribute('fetchpriority')) {
-        img.setAttribute('fetchpriority', 'low');
-      }
-    }
-
-    function scanForLazyImages(root) {
-      if (!root) {
-        return;
-      }
-      const scope = root.querySelectorAll ? root.querySelectorAll('img') : [];
-      scope.forEach(function(img) {
-        if (!img.closest('header')) {
-          applyDeferredAttributes(img);
-        }
-      });
-    }
-
     try {
       const savedPos = sessionStorage.getItem('stockScrollPos');
       const savedUrl = sessionStorage.getItem('stockScrollUrl');
@@ -178,27 +151,6 @@
         }
       });
     });
-
-    scanForLazyImages(document.body);
-    if ('MutationObserver' in window) {
-      const observer = new MutationObserver(function(records) {
-        records.forEach(function(record) {
-          record.addedNodes.forEach(function(node) {
-            if (!(node instanceof Element)) {
-              return;
-            }
-            if (node.tagName === 'IMG') {
-              if (!node.closest('header')) {
-                applyDeferredAttributes(node);
-              }
-            } else {
-              scanForLazyImages(node);
-            }
-          });
-        });
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
   });
   </script>
 

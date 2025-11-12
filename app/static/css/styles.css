@@ -28,14 +28,6 @@
   --bg: #f6f7fb;
   --card: rgba(255,255,255,.6);
   --shadow: 0 10px 30px rgba(2,6,23,.15);
-  /* table surfaces inherit the production tab aesthetic */
-  --table-panel-bg: rgba(255,255,255,.72);
-  --table-panel-border: rgba(148,163,184,.25);
-  --table-panel-shadow: 0 18px 36px rgba(15,23,42,.12);
-  --table-header-bg: rgba(255,255,255,.35);
-  --table-row-bg: rgba(255,255,255,.14);
-  --table-row-bg-alt: rgba(255,255,255,.08);
-  --table-row-hover: rgba(59,130,246,.16);
 }
 
 /* explicit light theme overrides.  Without these, selecting “light” after being in
@@ -48,13 +40,6 @@ html[data-theme='light']{
   --bg: #f6f7fb;
   --card: rgba(255,255,255,.6);
   --shadow: 0 10px 30px rgba(2,6,23,.15);
-  --table-panel-bg: rgba(255,255,255,.82);
-  --table-panel-border: rgba(148,163,184,.30);
-  --table-panel-shadow: 0 18px 40px rgba(15,23,42,.18);
-  --table-header-bg: rgba(255,255,255,.55);
-  --table-row-bg: rgba(255,255,255,.22);
-  --table-row-bg-alt: rgba(255,255,255,.14);
-  --table-row-hover: rgba(59,130,246,.12);
   /* hint to the browser which color schemes are supported when in light mode */
   color-scheme: light dark;
 }
@@ -69,13 +54,6 @@ html[data-theme='dark']{
   --bg: #0b0e13;
   --card: rgba(255,255,255,.08);
   --shadow: 0 10px 30px rgba(0,0,0,.35);
-  --table-panel-bg: rgba(15,23,42,.55);
-  --table-panel-border: rgba(148,163,184,.22);
-  --table-panel-shadow: 0 18px 44px rgba(2,6,23,.55);
-  --table-header-bg: rgba(15,23,42,.72);
-  --table-row-bg: rgba(15,23,42,.38);
-  --table-row-bg-alt: rgba(15,23,42,.32);
-  --table-row-hover: rgba(59,130,246,.24);
   color-scheme: dark light;
 }
 
@@ -366,9 +344,6 @@ input[type="radio"]{
 .flash.warning{ background: #f59e0b33; }
 .flash.danger{ background: #ef444433; }
 .muted{ color: var(--muted); }
-.text-right{ text-align: right; }
-.text-center{ text-align: center; }
-.text-left{ text-align: left; }
 code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 
 /*
@@ -378,24 +353,20 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 .table{
   width:100%;
   border-collapse:collapse;
-  border-spacing:0;
-  margin-top: 12px;
+  margin-top: 10px;
   /* center tables within their container */
   margin-left: auto;
   margin-right: auto;
-  color: var(--text);
-  font-size: 14px;
 }
 .table th,
 .table td{
-  padding: 12px 16px;
+  padding: 8px 12px;
   text-align:left;
   /* Centra verticalmente il contenuto delle celle per garantire
      un allineamento uniforme delle righe.  In precedenza le
      celle erano allineate in alto, causando disallineamenti
      soprattutto per le righe contenenti controlli di modulo. */
   vertical-align: middle;
-  background: transparent;
 }
 
 /* Make form controls inside tables stretch to fill the available cell width.  Without
@@ -412,27 +383,10 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
   box-sizing: border-box;
   display: block;
 }
-.table thead th{
-  color: var(--text);
-  font-size:13px;
+.table th{
+  color: var(--muted);
+  font-size:14px;
   font-weight:600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  background: var(--table-header-bg);
-  border-bottom: 1px solid var(--table-panel-border);
-  position: relative;
-}
-.table thead th:first-child{
-  border-top-left-radius: 14px;
-}
-.table thead th:last-child{
-  border-top-right-radius: 14px;
-}
-.table tbody tr:last-child td:first-child{
-  border-bottom-left-radius: 14px;
-}
-.table tbody tr:last-child td:last-child{
-  border-bottom-right-radius: 14px;
 }
 /*
  * Remove the alternating white background on table rows.  Previously the
@@ -454,25 +408,15 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
  * applied directly to the table or container rather than individual
  * rows.
  */
-.table tbody tr{
-  background: var(--table-row-bg);
-  transition: background .2s ease, transform .2s ease;
-}
-.table tbody tr:nth-child(even){
-  background: var(--table-row-bg-alt);
+.table tr:nth-child(odd),
+.table tr:nth-child(even) {
+  /* Transparent background for all rows; the parent card or container
+     supplies the base colour. */
+  background: transparent;
 }
 /* Highlight the entire row on hover with the glass background colour */
-.table tbody tr:hover {
-  background: var(--table-row-hover);
-  transform: translateY(-1px);
-}
-.table-compact th,
-.table-compact td{
-  padding: 8px 12px;
-  font-size: 13px;
-}
-.table-compact thead th{
-  font-size: 12px;
+.table tr:hover {
+  background: var(--glass-bg);
 }
 
 /* Increase horizontal spacing before the revision column in traditional
@@ -816,18 +760,25 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
  * via border-spacing on the table element. */
 .table-responsive .table {
   width: 100%;
-  border-collapse: collapse;
-  border-spacing: 0;
+  border-collapse: separate;
+  border-spacing: 0 8px;
 }
 
-.table-responsive .table thead tr,
+.table-responsive .table thead tr {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+}
+
 .table-responsive .table tbody tr {
-  background: transparent;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
 }
 
 .table-responsive .table td,
 .table-responsive .table th {
-  padding: inherit;
+  padding: 8px;
 }
 
 /*
@@ -972,19 +923,17 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 .table-responsive{
   width: 100%;
   overflow-x: auto;
-  overflow-y: hidden;
-  background: var(--table-panel-bg);
-  border: 1px solid var(--table-panel-border);
-  border-radius: 20px;
-  padding: 18px;
-  box-shadow: var(--table-panel-shadow);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  transition: border-color .2s ease, box-shadow .2s ease;
-}
-.table-responsive:hover{
-  border-color: color-mix(in srgb, var(--table-panel-border) 70%, #38bdf8 30%);
-  box-shadow: 0 20px 46px rgba(56,189,248,.18);
+  /* Wrap tables in a translucent card.  Without a background and border,
+     tables blended into the page and created contrast differences
+     between the warehouse and anagrafiche modules.  Applying the
+     ``glass`` treatment here provides a consistent card backdrop,
+     rounded corners and a subtle border so that data tables align
+     visually with the component lists. */
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
 }
 
 /* Toggle control used in hierarchical tables
@@ -1026,11 +975,52 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
  */
 
 /* Standard HTML tables used in the admin section (e.g. types, structures, suppliers). */
-.table td {
-  border-bottom: 1px solid var(--table-panel-border);
+.table th {
+  background: var(--card);
+  border-bottom: 1px solid var(--glass-stroke);
+  font-weight: 600;
+  /* Increase letter spacing slightly for clarity */
+  letter-spacing: 0.2px;
 }
-.table tbody tr:last-child td{
-  border-bottom: none;
+.table td {
+  border-bottom: 1px solid var(--glass-stroke);
+}
+/* Alternate row colouring for tables: odd rows use the card colour, even rows the translucent background. */
+/*
+ * Remove alternating card/glass backgrounds from admin tables as well.
+ * The base styles for tables above already set a transparent background
+ * for rows and provide a hover tint.  Redundant row colouring here is
+ * removed to avoid overriding the simplified styling.  If a specific
+ * table needs alternating colours it should apply them through a
+ * dedicated class instead of the generic .table selector.
+ */
+.table tr:nth-child(odd),
+.table tr:nth-child(even) {
+  background: transparent;
+}
+/* Maintain the hover highlight using the glass background colour */
+.table tr:hover {
+  background: var(--glass-bg);
+}
+
+/*
+ * Apply a subtle glass background to data rows in standard HTML tables.
+ * This change aligns the appearance of tabular data in the anagrafiche
+ * section with the cards used in the magazzino pages.  Without a
+ * background, table rows appeared flat and disconnected from the
+ * translucent cards used elsewhere in the application.  Using
+ * --glass-bg preserves legibility while allowing underlying gradients
+ * to show through slightly.
+ */
+.table tbody tr {
+  background: var(--glass-bg);
+}
+
+/* Adjust padding within table cells for improved readability */
+.table th,
+.table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 /* Component tree (magazzino) styling.  Applies to the header row and the

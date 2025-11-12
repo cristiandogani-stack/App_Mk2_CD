@@ -157,16 +157,16 @@ def associate_component() -> Any:
     # Record a scan event for auditing.  Include the assembly code in
     # the meta field so that later review can determine which assembly the
     # component was linked to.  Persist the operator's identifier and
-    # email when available.  Additionally, capture static component details
+    # username when available.  Additionally, capture static component details
     # (name, description and revision) so that they remain unchanged even if
     # the underlying anagrafica is updated later.
     try:
         meta_dict: dict[str, Any] = {'assembly_code': assembly_code}
-        # Capture user id and email when the request is authenticated
+        # Capture user id and username when the request is authenticated
         if current_user and hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
             try:
                 meta_dict['user_id'] = current_user.id
-                meta_dict['user_email'] = current_user.email
+                meta_dict['user_username'] = current_user.username
             except Exception:
                 pass
         # Import models locally to avoid circular imports and only when needed
@@ -617,7 +617,7 @@ def load_production_box(box_id: int) -> Any:
         if prod:
             product_increments[prod.id] += 1
         # Build metadata for the scan event.  Start with the box id and include
-        # the user identifier and email when an authenticated operator is
+        # the user identifier and username when an authenticated operator is
         # performing the load.  Additional static information about the
         # component (name, description and revision) is added after resolving
         # the structure below.
@@ -625,7 +625,7 @@ def load_production_box(box_id: int) -> Any:
         if current_user and hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
             try:
                 meta_dict['user_id'] = current_user.id
-                meta_dict['user_email'] = current_user.email
+                meta_dict['user_username'] = current_user.username
             except Exception:
                 # Best effort; ignore failures when retrieving user info
                 pass

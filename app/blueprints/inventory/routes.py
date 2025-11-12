@@ -2252,7 +2252,7 @@ def build_assembly(assembly_id: int):
                 # Structure (anagrafica) from altering the archive history.
                 meta_data = {
                     'user_id': getattr(current_user, 'id', None),
-                    'user_email': getattr(current_user, 'email', None),
+                    'user_username': getattr(current_user, 'username', None),
                     'quantity': quantity,
                     'timestamp': asm_timestamp,
                     'structure_name': getattr(assembly, 'name', None),
@@ -3045,7 +3045,13 @@ def archive() -> Any:
                                 meta_dict = {}
                             uid = None
                             try:
-                                uid = meta_dict.get('user_id') or meta_dict.get('user') or meta_dict.get('username') or meta_dict.get('operator')
+                            uid = (
+                                meta_dict.get('user_id')
+                                or meta_dict.get('user')
+                                or meta_dict.get('user_username')
+                                or meta_dict.get('username')
+                                or meta_dict.get('operator')
+                            )
                             except Exception:
                                 uid = None
                             if uid:
@@ -3246,16 +3252,22 @@ def archive() -> Any:
             pass
         return asm_code
 
-    # Helper: resolve user display string from a user_id.  Prefers email and
-    # falls back to id or empty string.  When uid is falsy the result is
-    # empty.
+    # Helper: resolve user display string from a user_id.  Prefers username and
+    # falls back to legacy email, id or empty string.  When uid is falsy the
+    # result is empty.
     def _user_display(uid: Any) -> str:
         if not uid:
             return ''
         try:
             usr = User.query.get(uid)
             if usr:
-                return usr.email or getattr(usr, 'username', None) or str(usr.id)
+                username = getattr(usr, 'username', None)
+                if username:
+                    return username
+                legacy_email = getattr(usr, 'email', None)
+                if legacy_email:
+                    return legacy_email
+                return str(usr.id)
         except Exception:
             pass
         return ''
@@ -4073,7 +4085,7 @@ def load_component(part_id: int):
                         if current_user and hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
                             meta_dict['user_id'] = current_user.id
                             try:
-                                meta_dict['user_email'] = current_user.email
+                                meta_dict['user_username'] = current_user.username
                             except Exception:
                                 pass
                         dm_code_meta: str = getattr(si, 'datamatrix_code', '') or ''
@@ -4562,40 +4574,53 @@ def product_archive_view(product_id: int):
             meta_dict = _json.loads(ev.meta) if ev.meta else {}
         except Exception:
             meta_dict = {}
-        # Prefer a stored user_email in meta when present.  This preserves the
-        # operator's email at the time of the event even if the User record is
-        # later modified.
-        stored_email = None
+        # Prefer a stored username in meta when present.  This preserves the
+        # operator's identifier at the time of the event even if the User record
+        # is later modified.  Fall back to the legacy ``user_email`` key for
+        # archives generated with older versions.
+        stored_username = None
         try:
-            stored_email = meta_dict.get('user_email')
+            stored_username = (
+                meta_dict.get('user_username')
+                or meta_dict.get('username')
+                or meta_dict.get('user_email')
+            )
         except Exception:
-            stored_email = None
-        if stored_email:
-            user_display = stored_email
+            stored_username = None
+        if stored_username:
+            user_display = stored_username
         else:
             # Attempt to resolve user from meta fields
             # meta may include the id of the user who performed the scan.  Attempt
             # to resolve the user id (integer) to the username.  Accept numeric
             # ids or strings directly.  When no user information is present the
             # display will remain empty (rendered as a dash in the template).
-            uid = meta_dict.get('user_id') or meta_dict.get('user') or meta_dict.get('username') or meta_dict.get('operator') or None
+            uid = (
+                meta_dict.get('user_id')
+                or meta_dict.get('user')
+                or meta_dict.get('user_username')
+                or meta_dict.get('username')
+                or meta_dict.get('operator')
+                or None
+            )
             if uid:
                 # Resolve the user identifier into a readable string.  If the
-                # underlying User model defines an email field (which is the case
-                # in this application), prefer that over the numeric id.  The
-                # previous implementation attempted to access a non‑existent
-                # ``username`` attribute which resulted in the id being shown.
+                # underlying User model defines a username field.  Fall back to the
+                # legacy email field only when the username is unavailable to
+                # preserve backwards compatibility with older databases.
                 try:
                     uid_int = int(uid)
                     usr = User.query.get(uid_int)
                     if usr:
-                        # Use email as a proxy for the user name.  Strip whitespace
-                        # and fall back to id if no email is defined.
-                        email = getattr(usr, 'email', None)
-                        if email:
-                            user_display = email
+                        username = getattr(usr, 'username', None)
+                        if username:
+                            user_display = username
                         else:
-                            user_display = str(uid)
+                            legacy_email = getattr(usr, 'email', None)
+                            if legacy_email:
+                                user_display = legacy_email
+                            else:
+                                user_display = str(uid)
                     else:
                         user_display = str(uid)
                 except Exception:
@@ -5856,7 +5881,13 @@ def product_archive_assemblies_view(product_id: int):
             if uid:
                 u = User.query.get(uid)
                 if u:
-                    return u.email or getattr(u, 'username', None) or str(u.id)
+                    username = getattr(u, 'username', None)
+                    if username:
+                        return username
+                    legacy_email = getattr(u, 'email', None)
+                    if legacy_email:
+                        return legacy_email
+                    return str(u.id)
         except Exception:
             pass
         return '—'
@@ -7553,9 +7584,15 @@ def product_archive_assemblies_view(product_id: int):
                             description = meta_data['structure_description']
                     except Exception:
                         pass
-                    # Determine the user display.  Prefer the stored user_email field
-                    # if present.  Fall back to resolving the user_id into an email.
-                    if meta_data.get('user_email'):
+                    # Determine the user display.  Prefer the stored username field
+                    # if present.  Fall back to resolving the user_id into a username
+                    # (or legacy email for backwards compatibility).
+                    if meta_data.get('user_username'):
+                        user_display = meta_data['user_username']
+                    elif meta_data.get('username'):
+                        user_display = meta_data['username']
+                    elif meta_data.get('user_email'):
+                        # Legacy key from previous versions that stored the email address.
                         user_display = meta_data['user_email']
                     elif meta_data.get('user_id'):
                         uid = meta_data['user_id']
@@ -7563,8 +7600,16 @@ def product_archive_assemblies_view(product_id: int):
                             uid_int = int(uid)
                             from ...models import User as _User  # type: ignore
                             usr = _User.query.get(uid_int)
-                            if usr and getattr(usr, 'email', None):
-                                user_display = usr.email
+                            if usr:
+                                username = getattr(usr, 'username', None)
+                                if username:
+                                    user_display = username
+                                else:
+                                    legacy_email = getattr(usr, 'email', None)
+                                    if legacy_email:
+                                        user_display = legacy_email
+                                    else:
+                                        user_display = str(uid)
                             else:
                                 user_display = str(uid)
                         except Exception:
@@ -8877,9 +8922,9 @@ def build_product(product_id: int) -> Any:
                             uid = getattr(current_user, 'id', None)
                             if uid:
                                 meta_dict['user_id'] = int(uid)
-                                # Include the operator's email in the meta to preserve the original user display.
+                                # Include the operator's username in the meta to preserve the original user display.
                                 try:
-                                    meta_dict['user_email'] = current_user.email
+                                    meta_dict['user_username'] = current_user.username
                                 except Exception:
                                     pass
                         except Exception:

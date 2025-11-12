@@ -56,70 +56,75 @@
   {# Back link: return to the previous page.  Uses the back_url passed
      from the view to ensure the user returns to the correct list. #}
   <a href="{{ back_url }}" class="btn ghost small back-link" style="margin-bottom:12px;">Indietro</a>
-  <div class="glass" style="padding:16px; text-align:center;">
-    <form method="post" enctype="multipart/form-data" class="form" style="text-align:center;">
-      {# Display the component image above the form contents.  Use the
-         computed ``display_image_filename`` attribute if available; otherwise
-         fall back to a placeholder gear icon.  The image is centred and
-         constrained to a reasonable size to mirror the assembly build
-         interface. #}
-      <div style="text-align:center; margin-bottom:12px;">
-        {% if part.display_image_filename %}
-          <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto;">
-        {% else %}
-          <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="max-width:120px; max-height:120px; object-fit:contain; display:block; margin:0 auto; filter: invert(1); opacity:0.7;">
-        {% endif %}
-      </div>
+  <div class="glass workflow-container">
+    <form method="post" enctype="multipart/form-data" class="workflow-form form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {# The quantity field has been removed.  Loading a component now
-         always adds a single unit (or the entire lot when lot management
-         is enabled).  The backend defaults to quantity 1 when no value
-         is submitted. #}
-      {% if doc_defs %}
-      <h5 style="margin:16px 0 6px; font-size:14px; font-weight:600;">Documenti</h5>
-      <div class="documentation-list" style="display:flex; flex-direction:column; gap:6px;">
-        {% for doc in doc_defs %}
-          {# Each document is laid out vertically for better readability on mobile.  The
-             label and download link are stacked and centred, followed by the file
-             input occupying the full width. #}
-          <div class="doc-item" style="display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              {# Display the document type using the human‑readable label when available;
-                 fall back to the display_name provided by the checklist definition. #}
-              <span style="font-size:14px; font-weight:600;">{{ doc_label_map.get(doc.type, doc.display_name) }}</span>
-              {# Use a standard ghost button (without the small modifier) for the
-                 per‑document download link so that it appears more
-                 prominent next to the document title.  The 'small'
-                 class made the link less visible on some devices. #}
-              <a href="{{ url_for('products.download_file', filename=doc.original_path) }}" target="_blank" class="btn ghost" style="white-space:nowrap;">Scarica</a>
-            </div>
-            <input type="file" name="{{ doc.field_name }}" required style="width:100%;">
-            <span class="file-name" style="font-size:12px; color:var(--muted); white-space:nowrap;"></span>
+      <header class="workflow-header">
+        <div class="workflow-thumb">
+          {% if part.display_image_filename %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + part.display_image_filename) }}" alt="{{ part.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ part.name }}" style="filter: invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="workflow-header-text">
+          <h3 class="workflow-title">{{ part.name }}</h3>
+          {% if part.description %}
+            <p class="workflow-subtitle">{{ part.description }}</p>
+          {% endif %}
+          <div class="workflow-meta">
+            <span class="workflow-chip">
+              {% if part.flag_commercial %}
+                Parte a commercio
+              {% else %}
+                Parte
+              {% endif %}
+            </span>
           </div>
-        {% endfor %}
+          <div class="workflow-status">
+            <span class="workflow-pill">Checklist documenti</span>
+            <span class="workflow-indicator" title="Documenti">
+              {{ '🟢' if docs_ready else '🔴' }}
+            </span>
+          </div>
+        </div>
+      </header>
+      <div class="workflow-body">
+        <div class="workflow-main">
+          <div class="workflow-block">
+            <h4>Associazione componenti</h4>
+            <p class="muted" style="margin:0;">Questo carico non richiede associazioni: conferma solamente i documenti richiesti e invia il modulo.</p>
+          </div>
+        </div>
+        <aside class="workflow-side">
+          <div class="workflow-block">
+            <h4>Documenti</h4>
+            {% if doc_defs %}
+              <div class="document-section">
+                {% for doc in doc_defs %}
+                <div class="document-card">
+                  <div class="document-card-header">
+                    <span class="document-card-title">{{ doc_label_map.get(doc.type, doc.display_name) }}</span>
+                    <div class="document-card-meta">
+                      <a href="{{ url_for('products.download_file', filename=doc.original_path) }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
+                    </div>
+                  </div>
+                  <div class="document-card-body">
+                    <input type="file" name="{{ doc.field_name }}" required>
+                    <span class="file-name document-file-name"></span>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0;">Nessuna documentazione richiesta per questo componente.</p>
+            {% endif %}
+          </div>
+        </aside>
       </div>
-      {% else %}
-      <p class="muted" style="margin:16px 0;">Nessuna documentazione richiesta per questo componente.</p>
-      {% endif %}
-
-      {# Traffic light indicator: shows green when no documents are required, red otherwise. #}
-      <div style="margin-top:16px;">
-        <span title="Documenti" style="font-size:24px; vertical-align:middle;">
-          {# Initially render the semaphore based on docs_ready which is
-             True when no documentation is required.  The dynamic
-             script below will update this span whenever the user
-             selects files for each required document. #}
-          {{ '🟢' if docs_ready else '🔴' }}
-        </span>
-      </div>
-      {# Action buttons: primary submit and cancel.  Download links are displayed next
-        to each document title above; no additional download buttons are
-        repeated here to avoid clutter.  This group appears at the bottom of
-        the form so operators can finalise the loading after uploading
-        documents. #}
-      <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px; width:100%;">
-        <button type="submit" class="btn primary full">Carica</button>
-        <a href="{{ back_url }}" class="btn ghost full cancel-link">Annulla</a>
+      <div class="workflow-footer">
+        <a href="{{ back_url }}" class="btn ghost cancel-link">Annulla</a>
+        <button type="submit" class="btn primary">Carica</button>
       </div>
     </form>
   </div>

@@ -51,7 +51,7 @@
   <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
   <h2 class="section-title">Magazzino: {{ product.name }} – Archivio componenti</h2>
   {# Tab bar: include the new "Archivio assiemi" link next to the component archive. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     {# Removed "Prodotto" tab from navigation. #}
     <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>

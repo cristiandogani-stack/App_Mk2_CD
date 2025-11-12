@@ -22,7 +22,7 @@
      assemblies, parts, commercial components, products and the history.
      The active tab is highlighted by comparing with the ``active_tab``
      variable passed from the view. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     {# Only display the "Prodotti" and "Storico Magazzino" tabs on the product overview.
        Category tabs require a selected product and are hidden here. #}
     <a href="{{ url_for('inventory.index') }}"

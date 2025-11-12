@@ -29,7 +29,7 @@
   {# Provide full category navigation on the parts listing as well.  This allows
      users to switch between assemblies, parts, commercial components, products and
      history from this page. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="tab-links">
     <a href="{{ url_for('inventory.list_assemblies') }}"
        class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
     <a href="{{ url_for('inventory.list_parts') }}"

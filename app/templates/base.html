@@ -13,7 +13,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
-<body>
+<body class="app-body">
+  <a class="skip-link" href="#mainContent">Salta al contenuto</a>
   <div class="bg-aurora"></div>
 
   {# Hide the header when rendering in embedded mode (e.g. inside an iframe).
@@ -21,55 +22,57 @@
      navigation and header.  #}
   {% if current_user.is_authenticated and not embedded %}
   <header class="app-header glass">
-    <div class="brand">
-      {# Updated logo to use the new PNG provided by the user and wrap it in a link
-         to the dashboard.  Making the logo clickable allows users to
-         quickly return to the main dashboard from anywhere in the app. #}
-      <a href="{{ url_for('dashboard.index') }}" class="brand-link" style="display:inline-block;">
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo">
-      </a>
-      {# Removed brand name to display only the logo #}
+    <div class="header-inner">
+      <div class="brand">
+        {# Updated logo to use the new PNG provided by the user and wrap it in a link
+           to the dashboard.  Making the logo clickable allows users to
+           quickly return to the main dashboard from anywhere in the app. #}
+        <a href="{{ url_for('dashboard.index') }}" class="brand-link" aria-label="Vai alla dashboard">
+          <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="logo">
+        </a>
+        {# Removed brand name to display only the logo #}
+      </div>
+      <nav class="nav-desktop" aria-label="Sezioni applicazione">
+        {#
+          Highlight the active top‑level module by comparing the blueprint
+          portion of the current request endpoint with that of each module.
+          Routes within a blueprint share the same prefix (e.g. ``inventory.*``),
+          so checking just the prefix ensures the module remains active when
+          navigating deeper into its subpages.  Without this logic the
+          navigation bar would deselect "Magazzino" when visiting
+          "/inventory/products", "/inventory/assemblies", etc.
+          When a blueprint explicitly sets ``active_module`` (for example the
+          production module when delegating to inventory views) use that value
+          to force the highlight.
+        #}
+        {% set cur_ep = request.endpoint or '' %}
+        {% set detected_bp = (cur_ep.split('.')|first) %}
+        {% set forced_bp = None %}
+        {% if active_module is defined and active_module %}
+          {% set forced_bp = active_module %}
+        {% elif g is defined and g.active_module is defined and g.active_module %}
+          {% set forced_bp = g.active_module %}
+        {% endif %}
+        {% set cur_bp = forced_bp if forced_bp else detected_bp %}
+        {% for m in enabled_modules %}
+          {% set mod_bp = (m.endpoint.split('.')|first) %}
+          {% set is_active = (mod_bp == cur_bp) %}
+          {# Rename the top‑level "Prodotti" module to "Anagrafiche" when rendering the navigation.  This
+             ensures the link label reflects the new terminology without
+             modifying the underlying blueprint slug or database record. #}
+          {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
+          <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
+        {% endfor %}
+      </nav>
+      {# The global search bar has been removed from the header.  Search
+         functionality is now available within the product pages themselves. #}
+      <div class="header-actions">
+        {# The theme toggle has been removed.  The application always
+           operates in dark mode, so only the logout button remains here. #}
+        <a class="btn ghost" href="{{ url_for('auth.logout') }}">Esci</a>
+      </div>
+      <button class="hamburger" id="hamburger" aria-label="Apri menu">☰</button>
     </div>
-    <nav class="nav-desktop">
-      {#
-        Highlight the active top‑level module by comparing the blueprint
-        portion of the current request endpoint with that of each module.
-        Routes within a blueprint share the same prefix (e.g. ``inventory.*``),
-        so checking just the prefix ensures the module remains active when
-        navigating deeper into its subpages.  Without this logic the
-        navigation bar would deselect "Magazzino" when visiting
-        "/inventory/products", "/inventory/assemblies", etc.
-        When a blueprint explicitly sets ``active_module`` (for example the
-        production module when delegating to inventory views) use that value
-        to force the highlight.
-      #}
-      {% set cur_ep = request.endpoint or '' %}
-      {% set detected_bp = (cur_ep.split('.')|first) %}
-      {% set forced_bp = None %}
-      {% if active_module is defined and active_module %}
-        {% set forced_bp = active_module %}
-      {% elif g is defined and g.active_module is defined and g.active_module %}
-        {% set forced_bp = g.active_module %}
-      {% endif %}
-      {% set cur_bp = forced_bp if forced_bp else detected_bp %}
-      {% for m in enabled_modules %}
-        {% set mod_bp = (m.endpoint.split('.')|first) %}
-        {% set is_active = (mod_bp == cur_bp) %}
-        {# Rename the top‑level "Prodotti" module to "Anagrafiche" when rendering the navigation.  This
-           ensures the link label reflects the new terminology without
-           modifying the underlying blueprint slug or database record. #}
-        {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
-        <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
-      {% endfor %}
-    </nav>
-    {# The global search bar has been removed from the header.  Search
-       functionality is now available within the product pages themselves. #}
-    <div class="header-actions">
-      {# The theme toggle has been removed.  The application always
-         operates in dark mode, so only the logout button remains here. #}
-      <a class="btn btn-ghost" href="{{ url_for('auth.logout') }}">Esci</a>
-    </div>
-    <button class="hamburger" id="hamburger" aria-label="Apri menu">☰</button>
   </header>
 
   {# Mobile navigation: hidden in embedded mode #}
@@ -100,7 +103,7 @@
   </nav>
   {% endif %}
 
-  <main class="container">
+  <main id="mainContent" class="page-content">
     {# Display flash messages from Flask.  Without this the user never sees success/error alerts #}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}

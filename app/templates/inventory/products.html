@@ -253,26 +253,6 @@
     the guided build procedure.  Errors are surfaced via alert dialogs.
   #}
   <script>
-function redirectToProductionOverview(boxType, boxId) {
-  const params = new URLSearchParams();
-  const tab = (boxType || '').toString().trim().toUpperCase();
-  if (tab) {
-    params.set('tab', tab);
-  }
-  if (boxId) {
-    params.set('box', boxId);
-  }
-  let url = '/production/';
-  const query = params.toString();
-  if (query) {
-    url += `?${query}`;
-  }
-  if (boxId) {
-    url += `#box-${boxId}`;
-  }
-  window.location.href = url;
-}
-
 function prenotaProdotto(productId, productName, maxQty) {
     if (!maxQty || maxQty <= 0) {
       alert('Nessuna unità prenotabile disponibile.');
@@ -304,7 +284,7 @@ function prenotaProdotto(productId, productName, maxQty) {
         const codes = (data.items || []).map(i => i.datamatrix).join(', ');
         alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
         if (data.productionBoxId) {
-          redirectToProductionOverview(data.boxType || 'PRODOTTO', data.productionBoxId);
+          window.location.href = '/inventory/production_box/' + data.productionBoxId;
         }
       })
       .catch(err => {

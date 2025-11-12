@@ -1,185 +1,321 @@
 /*
- * Theme tokens
+ * Global theme tokens
  *
- * The application exposes a theme toggle (light / dark / system) via a button in the header.
- * In the original starter the CSS relied solely on the browser’s `prefers-color-scheme` media
- * query. That meant clicking the toggle had no visible effect because there were no rules
- * associated with the `data-theme` attribute set on the `<html>` element.  To make the toggle
- * functional we define separate CSS custom property sets for each theme.  The `:root`
- * definition below holds the default “light” palette.  We then mirror these variables inside
- * `html[data-theme="light"]` so explicit light selection always wins over OS preferences.
- *
- * For dark mode we copy the values previously defined in the `prefers-color-scheme: dark`
- * block into an `html[data-theme="dark"]` rule.  This ensures that when the user selects
- * dark mode, the variables override those defined on the root.  Finally, we leave the
- * `prefers-color-scheme` media query in place so that `data-theme="system"` falls back
- * gracefully to the user’s operating system setting without duplicating values.
+ * Refresh the palette with softer contrasts and translucent layers so that cards,
+ * navigation and tables feel lighter on both desktop and mobile.  Colours are
+ * defined through CSS custom properties and adjusted per theme using
+ * the `data-theme` attribute already present on the `<html>` element.
  */
 
 :root{
-  /* spacing and geometry */
-  --radius: 14px;
-  --gap: 16px;
-  /* light palette */
-  --glass-bg: rgba(255,255,255,.10);
-  --glass-stroke: rgba(255,255,255,.25);
-  --text: #0b0b0c;
-  --muted: #6b7280;
-  --bg: #f6f7fb;
-  --card: rgba(255,255,255,.6);
-  --shadow: 0 10px 30px rgba(2,6,23,.15);
-}
+  --radius: 18px;
+  --radius-sm: 12px;
+  --gap: 20px;
+  --header-height: 74px;
 
-/* explicit light theme overrides.  Without these, selecting “light” after being in
- * dark mode would not reset the variables defined on the `<html>` element. */
-html[data-theme='light']{
-  --glass-bg: rgba(255,255,255,.10);
-  --glass-stroke: rgba(255,255,255,.25);
-  --text: #0b0b0c;
-  --muted: #6b7280;
-  --bg: #f6f7fb;
-  --card: rgba(255,255,255,.6);
-  --shadow: 0 10px 30px rgba(2,6,23,.15);
-  /* hint to the browser which color schemes are supported when in light mode */
+  --bg: radial-gradient(140% 140% at 90% -20%, #f8fbff 0%, #eef2ff 35%, #e2e8f0 70%, #dde3f2 100%);
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-stroke: rgba(148, 163, 184, 0.22);
+  --card: rgba(255, 255, 255, 0.92);
+  --shadow: 0 26px 60px rgba(15, 23, 42, 0.16);
+  --shadow-soft: 0 18px 38px rgba(15, 23, 42, 0.12);
+
+  --text: #0f172a;
+  --muted: #5f6b85;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --success: #059669;
+  --success-soft: rgba(16, 185, 129, 0.18);
+  --warning-soft: rgba(251, 191, 36, 0.18);
+  --danger-soft: rgba(239, 68, 68, 0.18);
+
   color-scheme: light dark;
 }
 
-/* dark theme variables replicate those previously defined in the media query below */
+html[data-theme='light']{
+  --bg: radial-gradient(140% 140% at 90% -20%, #f8fbff 0%, #eef2ff 35%, #e2e8f0 70%, #dde3f2 100%);
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-stroke: rgba(148, 163, 184, 0.22);
+  --card: rgba(255, 255, 255, 0.92);
+  --shadow: 0 26px 60px rgba(15, 23, 42, 0.16);
+  --shadow-soft: 0 18px 38px rgba(15, 23, 42, 0.12);
+  --text: #0f172a;
+  --muted: #5f6b85;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --success: #059669;
+  --success-soft: rgba(16, 185, 129, 0.18);
+  --warning-soft: rgba(251, 191, 36, 0.18);
+  --danger-soft: rgba(239, 68, 68, 0.18);
+  color-scheme: light dark;
+}
+
 html[data-theme='dark']{
-  /* Dark theme palette: provide more contrast on selectable elements */
-  --glass-bg: rgba(17,25,40,.50);
-  --glass-stroke: rgba(255,255,255,.08);
+  --bg: radial-gradient(160% 160% at 90% -30%, #1a2e4c 0%, #0d182b 45%, #050a15 100%);
+  --glass-bg: rgba(21, 30, 46, 0.76);
+  --glass-stroke: rgba(148, 163, 184, 0.24);
+  --card: rgba(28, 39, 58, 0.86);
+  --shadow: 0 28px 70px rgba(3, 9, 25, 0.55);
+  --shadow-soft: 0 20px 46px rgba(3, 9, 25, 0.42);
+
   --text: #f8fafc;
-  --muted: #93a3b3;
-  --bg: #0b0e13;
-  --card: rgba(255,255,255,.08);
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --muted: #95a4c2;
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --accent-soft: rgba(14, 165, 233, 0.18);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.22);
+  --warning-soft: rgba(251, 191, 36, 0.2);
+  --danger-soft: rgba(248, 113, 113, 0.22);
   color-scheme: dark light;
 }
 
-/* keep automatic dark mode fallback for system theme.  When `data-theme` is set to
- * `system` the media query will override the root variables based on the user’s
- * operating system preference. */
 @media (prefers-color-scheme: dark){
   :root{
-    --glass-bg: rgba(17,25,40,.50);
-    --glass-stroke: rgba(255,255,255,.08);
+    --bg: radial-gradient(160% 160% at 90% -30%, #1a2e4c 0%, #0d182b 45%, #050a15 100%);
+    --glass-bg: rgba(21, 30, 46, 0.76);
+    --glass-stroke: rgba(148, 163, 184, 0.24);
+    --card: rgba(28, 39, 58, 0.86);
+    --shadow: 0 28px 70px rgba(3, 9, 25, 0.55);
+    --shadow-soft: 0 20px 46px rgba(3, 9, 25, 0.42);
     --text: #f8fafc;
-    --muted: #93a3b3;
-    --bg: #0b0e13;
-    --card: rgba(255,255,255,.08);
-    --shadow: 0 10px 30px rgba(0,0,0,.35);
+    --muted: #95a4c2;
+    --accent: #38bdf8;
+    --accent-strong: #0ea5e9;
+    --accent-soft: rgba(14, 165, 233, 0.18);
+    --success: #34d399;
+    --success-soft: rgba(52, 211, 153, 0.22);
+    --warning-soft: rgba(251, 191, 36, 0.2);
+    --danger-soft: rgba(248, 113, 113, 0.22);
+    color-scheme: dark light;
   }
 }
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
   margin:0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol";
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol";
   color: var(--text);
   background: var(--bg);
+  background-color: #0b1220;
+  background-attachment: fixed;
+  min-height: 100%;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
-.container{ max-width:1100px; margin: 90px auto 60px; padding: 0 16px; }
-.bg-aurora{
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(1200px 600px at 10% 10%, #8ec5ff33 0%, transparent 50%),
-              radial-gradient(1000px 500px at 90% 20%, #ffa3e533 0%, transparent 50%),
-              radial-gradient(1200px 600px at 50% 90%, #a7f3d033 0%, transparent 40%);
-  filter: blur(30px) saturate(120%);
-  animation: float 16s linear infinite alternate;
-  z-index: -1;
+
+a{
+  color: var(--accent);
+  text-decoration: none;
+  transition: color .2s ease, opacity .2s ease;
 }
-@keyframes float{ from{ transform: translateY(-2%) } to{ transform: translateY(2%) } }
+
+a:hover,
+a:focus{
+  color: var(--accent-strong);
+}
+
+.container{
+  width: min(1180px, calc(100% - 32px));
+  margin: calc(var(--header-height) + 36px) auto 82px;
+  padding: 0;
+}
+
+@media (max-width: 960px){
+  .container{ width: min(100%, calc(100% - 24px)); margin: calc(var(--header-height) + 28px) auto 66px; }
+}
+
+@media (max-width: 600px){
+  body{ background-attachment: scroll; }
+  .container{ width: calc(100% - 24px); margin: calc(var(--header-height) + 18px) auto 54px; }
+}
+
 .glass{
   background: var(--glass-bg);
   border: 1px solid var(--glass-stroke);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
+
 .app-header{
-  /* Position the header at the very top of the viewport.  Remove side offsets so it spans the full width. */
   position: fixed;
-  top: 0;
+  top: 18px;
   left: 0;
   right: 0;
-  height: 64px; display:flex; align-items:center; gap:16px; padding: 0 12px;
-  /* Ensure the header stays above all other page content.  Without a
-     z-index, other fixed or relative elements could overlap the
-     navigation bar when scrolling. */
+  display:flex;
+  justify-content:center;
+  padding: 0 20px;
   z-index: 1000;
 }
-.brand{ display:flex; align-items:center; gap:10px; }
-.brand .logo{
-  /* Ensure the header logo preserves its original aspect ratio.
-     Specify only the height so the width scales automatically based on the image dimensions. */
-  /* Increase the size of the header logo slightly while maintaining aspect ratio */
-  height: 40px;
-  width: auto;
+
+.header-inner{
+  width: min(1180px, 100%);
+  height: var(--header-height);
+  display:flex;
+  align-items:center;
+  gap: 18px;
+  padding: 0 18px;
 }
-.brand .brand-name{ font-weight:600; letter-spacing:.2px; }
+
+@media (max-width: 720px){
+  :root{ --header-height: 66px; }
+  .header-inner{ gap: 12px; padding: 0 14px; }
+}
+
+.brand{ display:flex; align-items:center; gap:12px; }
+.brand .logo{ height: 40px; width:auto; filter: drop-shadow(0 8px 18px rgba(2, 12, 32, 0.28)); }
+
 .nav-desktop{ margin-left: 12px; display:none; gap:6px; }
+
 .nav-desktop .nav-link{
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   gap:8px;
-  padding:10px 12px;
-  border-radius: 10px;
+  padding:10px 18px;
+  border-radius: 999px;
   text-decoration:none;
-  color:inherit;
-  transition: transform .2s ease, background .2s ease, font-weight .2s ease;
+  color: var(--muted);
+  font-weight:500;
+  letter-spacing:.01em;
+  transition: color .25s ease, background .25s ease, box-shadow .25s ease, transform .25s ease;
 }
-.nav-desktop .nav-link:hover{ transform: translateY(-1px); background: var(--card); }
 
-/* highlight the active link in the navigation */
-.nav-desktop .nav-link.active,
-.nav-mobile .nav-link.active{
+.nav-desktop .nav-link:hover{
+  color: var(--text);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(20, 38, 78, 0.2);
+}
+
+.nav-desktop .nav-link.active{
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: 0 16px 36px rgba(20, 38, 78, 0.22);
   font-weight:600;
-  background: var(--card);
 }
 
-/* simple icon styling */
-.nav-icon{
-  display:inline-block;
-  width: 1em;
-  text-align:center;
-}
+.nav-icon{ display:inline-block; width:1em; text-align:center; }
+
 .header-actions{ margin-left:auto; display:flex; align-items:center; gap:10px; }
-.hamburger{ display:inline-flex; margin-left:6px; border:0; background:transparent; font-size:20px; }
-@media(min-width: 900px){ .nav-desktop{ display:flex; } .hamburger{ display:none; } }
-.nav-mobile{ position: fixed; top: 84px; right: 12px; left:12px; display:none; flex-direction:column; padding: 10px; }
 
-/* Keep the mobile navigation on top of other elements.  When the menu
-   is opened it should overlay content such as dialogs and cards. */
+.hamburger{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:40px;
+  height:40px;
+  border-radius:999px;
+  border:1px solid var(--glass-stroke);
+  background: transparent;
+  color: var(--text);
+  font-size:18px;
+  cursor:pointer;
+  transition: background .2s ease, color .2s ease, transform .2s ease;
+}
+
+.hamburger:hover{ background: var(--accent-soft); color: var(--accent-strong); transform: translateY(-1px); }
+
+@media(min-width: 960px){ .nav-desktop{ display:flex; } .hamburger{ display:none; } }
+
 .nav-mobile{
-  z-index: 999;
+  position: fixed;
+  top: calc(var(--header-height) + 28px);
+  right: 20px;
+  left: 20px;
+  display:flex;
+  flex-direction:column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: var(--radius);
+  border:1px solid var(--glass-stroke);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  transform: translateY(-12px);
+  opacity:0;
+  pointer-events:none;
+  transition: transform .25s ease, opacity .25s ease;
+  z-index: 950;
 }
+
+@media (max-width: 520px){
+  .nav-mobile{ right: 12px; left: 12px; }
+}
+
 .nav-mobile .nav-link{
-  display:block;
-  padding:12px;
-  border-radius:10px;
+  display:flex;
+  align-items:center;
+  padding:12px 14px;
+  border-radius: var(--radius-sm);
   text-decoration:none;
-  color:inherit;
+  color: var(--muted);
+  transition: color .2s ease, background .2s ease;
 }
-.nav-mobile.show{ display:flex; }
+
+.nav-mobile .nav-link:hover,
+.nav-mobile .nav-link.active{
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.nav-mobile .nav-link.active{ font-weight:600; }
+
+.nav-mobile.show{
+  transform: translateY(0);
+  opacity:1;
+  pointer-events:auto;
+}
+
 .btn{
-  display:inline-flex; align-items:center; justify-content:center;
-  gap:8px; padding:10px 14px;
-  border-radius: 12px; border:1px solid var(--glass-stroke);
-  background: var(--card); cursor:pointer; text-decoration:none; color:inherit;
-  transition: transform .2s ease, filter .2s ease, background .2s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:10px 18px;
+  border-radius: var(--radius-sm);
+  border:1px solid var(--glass-stroke);
+  background: var(--card);
+  color: var(--text);
+  cursor:pointer;
+  text-decoration:none;
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
 }
-.btn.small{
-  padding:6px 10px;
-  font-size:14px;
+
+.btn.small{ padding:6px 12px; font-size:14px; }
+
+.btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+
+.btn.primary{
+  border:0;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #f8fbff;
+  box-shadow: 0 18px 34px rgba(14, 165, 233, 0.34);
 }
-.btn:hover{ transform: translateY(-1px); filter: brightness(1.05); }
-.btn.primary{ background: linear-gradient(180deg, #4f46e5, #4338ca); color:white; border:0; }
-.btn.success{ background: linear-gradient(180deg, #10b981, #059669); color:white; border:0; }
-.btn.ghost{ background: transparent; border:1px solid var(--glass-stroke); }
+
+.btn.primary:hover{ box-shadow: 0 20px 38px rgba(14, 165, 233, 0.38); filter: brightness(1.03); }
+
+.btn.success{
+  border:0;
+  background: linear-gradient(135deg, var(--success), #0f766e);
+  color: #f1fdf7;
+  box-shadow: 0 18px 34px rgba(16, 185, 129, 0.28);
+}
+
+.btn.success:hover{ box-shadow: 0 20px 38px rgba(16, 185, 129, 0.32); filter: brightness(1.02); }
+
+.btn.ghost{
+  background: transparent;
+  border:1px solid var(--glass-stroke);
+  color: var(--text);
+}
+
 .btn.full{ width:100%; }
+
+.btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 /*
  * Visually highlight a row after a stock update.  When the application
  * redirects back to a listing with a fragment like ``#part-42`` the
@@ -191,32 +327,44 @@ body{
  */
 .highlight-row {
   position: relative;
-  animation: row-pulse 2s ease-out;
+  animation: row-pulse 2.4s ease-out;
 }
 
 @keyframes row-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.6); }
-  50%  { box-shadow: 0 0 0 6px rgba(253, 224, 71, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(253, 224, 71, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
 }
 /* Improve visibility of radio buttons.  Without an explicit accent color some browsers render
    radio buttons with a low‑contrast color in dark mode, making the selected state hard to see.
    The accent‑color property is supported in modern browsers and allows us to set a custom color
    for the selected state. */
 input[type="radio"]{
-  accent-color: #4338ca;
+  accent-color: var(--accent-strong);
 }
-.section{ margin-top: 12px; }
-.section-title{ font-size: 26px; margin: 10px 0; }
-.section-subtitle{ color: var(--muted); margin-top: -6px; }
+.section{ margin-top: 28px; }
+.section-title{ font-size: clamp(22px, 3vw, 30px); margin: 8px 0 6px; font-weight:600; letter-spacing:-0.01em; }
+.section-subtitle{ color: var(--muted); margin-top: 0; font-size: 15px; }
 .grid{ display:grid; gap: var(--gap); }
 .grid-2{ grid-template-columns: repeat(1, minmax(0,1fr)); }
 .grid-3{ grid-template-columns: repeat(1, minmax(0,1fr)); }
 @media(min-width: 700px){ .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
-@media(min-width: 950px){ .grid-3{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
-.card{ padding: 16px 16px 22px; }
+@media(min-width: 980px){ .grid-3{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.card{
+  padding: 22px 24px 26px;
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.card:hover{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: rgba(148, 163, 184, 0.32);
+}
 .card.tall{ min-height:200px; }
-.card-title{ margin: 4px 0 10px; font-weight:600; }
+.card-title{ margin: 2px 0 10px; font-weight:600; font-size:18px; }
 
 /*
  * Interactive animation for product cards on the products overview page.
@@ -225,14 +373,14 @@ input[type="radio"]{
  * abruptly.  Adjust the scale factor or duration to tweak the effect.
  */
 .product-card{
-  /* Ensure smooth scaling when hovering */
-  transition: transform 0.25s ease-in-out;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 .product-card:hover{
-  transform: scale(1.03);
+  transform: translateY(-6px);
+  box-shadow: var(--shadow);
 }
 .link-card{ text-decoration:none; color:inherit; }
-.placeholder{ height: 120px; border-radius: 12px; background: var(--card); border:1px dashed var(--glass-stroke); }
+.placeholder{ height: 120px; border-radius: var(--radius-sm); background: var(--card); border:1px dashed var(--glass-stroke); }
 .shimmering{ position: relative; overflow:hidden; }
 .shimmering::after{
   content:""; position:absolute; inset:0; transform: translateX(-100%);
@@ -251,10 +399,10 @@ input[type="radio"]{
  */
 .highlight {
   animation: highlight-bg 4s ease-in-out;
-  background-color: rgba(255, 255, 0, 0.25);
+  background-color: var(--accent-soft);
 }
 @keyframes highlight-bg {
-  0% { background-color: rgba(255, 255, 0, 0.35); }
+  0% { background-color: rgba(56, 189, 248, 0.35); }
   100% { background-color: transparent; }
 }
 .list-row{
@@ -264,7 +412,12 @@ input[type="radio"]{
   grid-template-columns: 1fr auto;
   gap:10px;
   align-items:center;
-  padding: 10px; border-radius: 12px; margin-bottom: 8px; background: var(--card);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-soft);
 }
 
 /* Stack name and subtitle inside the first column of list rows */
@@ -281,15 +434,24 @@ input[type="radio"]{
    the native checkbox appearance (otherwise users cannot see or interact with
    them). */
 .field input:not([type="checkbox"]):not([type="radio"]), .field textarea, .field select{
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding:12px 14px;
   background: var(--card);
   border:1px solid var(--glass-stroke);
   color: inherit;
   outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
   /* Remove default OS styling so our custom colors apply consistently */
   -webkit-appearance: none;
   appearance: none;
+}
+
+.field input:not([type="checkbox"]):not([type="radio"]):focus,
+.field textarea:focus,
+.field select:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18);
+  background: rgba(255, 255, 255, 0.12);
 }
 .checkbox{ display:flex; align-items:center; gap: 8px; }
 .field select option,
@@ -314,7 +476,16 @@ input[type="radio"]{
 }
 .auth-body{ min-height: 100vh; display:grid; place-items:center; }
 .login-wrap{ width: 100%; padding: 18px; }
-.login-card{ max-width: 380px; margin: 0 auto; padding: 24px 20px; text-align:center; }
+.login-card{
+  max-width: 380px;
+  margin: 0 auto;
+  padding: 32px 28px;
+  text-align:center;
+  background: var(--card);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
 .login-brand .logo.lg{
   /* Ensure the login page logo preserves its original aspect ratio.
      Specify only the height so the width scales automatically. */
@@ -327,22 +498,25 @@ input[type="radio"]{
 .flash-stack{
   display:flex;
   flex-direction:column;
-  gap:8px;
-  /* Display flash messages as fixed overlays so they do not push the page
-     content downward.  Position them near the top right of the viewport
-     and give them a high z-index so they appear above other elements. */
+  gap:10px;
   position:fixed;
-  top:80px;
-  right:20px;
-  z-index:1000;
+  top: calc(var(--header-height) + 52px);
+  right: min(4vw, 28px);
+  z-index:1100;
   margin-bottom:0;
   max-width:320px;
 }
-.flash{ padding: 10px 12px; border-radius: 10px; }
-.flash.info{ background: #3b82f633; }
-.flash.success{ background: #10b98133; }
-.flash.warning{ background: #f59e0b33; }
-.flash.danger{ background: #ef444433; }
+.flash{
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--shadow-soft);
+  background: var(--card);
+}
+.flash.info{ background: var(--accent-soft); }
+.flash.success{ background: var(--success-soft); }
+.flash.warning{ background: var(--warning-soft); }
+.flash.danger{ background: var(--danger-soft); }
 .muted{ color: var(--muted); }
 code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 
@@ -367,6 +541,14 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
      celle erano allineate in alto, causando disallineamenti
      soprattutto per le righe contenenti controlli di modulo. */
   vertical-align: middle;
+}
+
+.table tbody tr{
+  border-bottom: 1px solid var(--glass-stroke);
+}
+
+.table tbody tr:last-child{
+  border-bottom: none;
 }
 
 /* Make form controls inside tables stretch to fill the available cell width.  Without
@@ -416,7 +598,7 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 }
 /* Highlight the entire row on hover with the glass background colour */
 .table tr:hover {
-  background: var(--glass-bg);
+  background: var(--accent-soft);
 }
 
 /* Increase horizontal spacing before the revision column in traditional
@@ -464,6 +646,7 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
   border-radius: var(--radius);
   margin-bottom: 8px;
   overflow: hidden;
+  box-shadow: var(--shadow-soft);
 }
 
 .component-node > summary {
@@ -488,7 +671,7 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
 
 /* Highlight node summaries on hover for better affordance */
 .component-node > summary:hover {
-  background: var(--glass-bg);
+  background: var(--accent-soft);
 }
 
 /* Hide the default marker for <details> */
@@ -932,8 +1115,8 @@ code{ background: var(--card); padding: 2px 6px; border-radius: 6px; }
   background: var(--card);
   border: 1px solid var(--glass-stroke);
   border-radius: var(--radius);
-  padding: 8px;
-  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-soft);
 }
 
 /* Toggle control used in hierarchical tables

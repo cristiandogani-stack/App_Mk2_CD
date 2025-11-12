@@ -221,26 +221,6 @@
       window.currentProductId = {{ product.id }};
     });
 
-    function redirectToProductionOverview(boxType, boxId) {
-      const params = new URLSearchParams();
-      const tab = (boxType || '').toString().trim().toUpperCase();
-      if (tab) {
-        params.set('tab', tab);
-      }
-      if (boxId) {
-        params.set('box', boxId);
-      }
-      let url = '/production/';
-      const query = params.toString();
-      if (query) {
-        url += `?${query}`;
-      }
-      if (boxId) {
-        url += `#box-${boxId}`;
-      }
-      window.location.href = url;
-    }
-
     /**
      * Create a reservation for the given product.  Optional parameters
      * ``boxType`` and ``componentCode`` allow overriding the type of
@@ -277,8 +257,7 @@
           const codes = data.items.map(item => item.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            const targetType = data.boxType || payload.boxType || 'ASSIEME';
-            redirectToProductionOverview(targetType, data.productionBoxId);
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
           }
         })
         .catch(err => {
@@ -387,7 +366,7 @@
           const codes = data.items.map(i => i.datamatrix).join(', ');
           alert('Prenotazione creata.\nBox: ' + data.productionBoxId + '\nCodici: ' + codes);
           if (data.productionBoxId) {
-            redirectToProductionOverview(data.boxType || 'ASSIEME', data.productionBoxId);
+            window.location.href = '/inventory/production_box/' + data.productionBoxId;
           }
         })
         .catch(err => {

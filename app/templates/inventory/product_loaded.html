@@ -30,28 +30,28 @@
   {% if items|length == 0 %}
     <p class="muted">Nessun componente caricato per questo prodotto.</p>
   {% else %}
-    <table class="glass" style="width:100%; border-collapse:collapse;">
+    <table class="table table-compact">
       <thead>
         <tr>
-          <th style="text-align:left; padding:8px;">#</th>
-          <th style="text-align:left; padding:8px;">DataMatrix</th>
-          <th style="text-align:left; padding:8px;">Box di produzione</th>
-          <th style="text-align:left; padding:8px;">Stato</th>
+          <th>#</th>
+          <th>DataMatrix</th>
+          <th>Box di produzione</th>
+          <th>Stato</th>
         </tr>
       </thead>
       <tbody>
         {% for item in items %}
-        <tr style="border-bottom:1px solid var(--glass-stroke);">
-          <td style="padding:8px;">{{ loop.index }}</td>
-          <td style="padding:8px; font-family:monospace;">{{ item.datamatrix_code }}</td>
-          <td style="padding:8px;">
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td style="font-family:monospace;">{{ item.datamatrix_code }}</td>
+          <td>
             {% if item.production_box %}
               <a href="{{ url_for('inventory.production_box_view', box_id=item.production_box.id) }}">{{ item.production_box.code }}</a>
             {% else %}
               &mdash;
             {% endif %}
           </td>
-          <td style="padding:8px;">{{ item.status }}</td>
+          <td>{{ item.status }}</td>
         </tr>
         {% endfor %}
       </tbody>

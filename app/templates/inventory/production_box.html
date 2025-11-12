@@ -105,7 +105,7 @@
                   <span class="document-card-title">{{ doc_name }}</span>
                   <div class="document-card-meta">
                     {% if doc_path %}
-                      <a href="{{ url_for('static', filename=doc_path) }}" target="_blank" class="btn ghost small">Scarica</a>
+                      <a href="{{ url_for('static', filename=doc_path) }}" class="btn ghost small" download="{{ doc_name }}">Scarica</a>
                     {% else %}
                       <span class="muted" style="white-space:nowrap;">—</span>
                     {% endif %}
@@ -295,13 +295,31 @@ document.addEventListener('DOMContentLoaded', function(){
     return finalUrl;
   }
 
+  function navigateDirect(url){
+    if (!url) {
+      return false;
+    }
+    try {
+      window.location.href = url;
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function openLoadModal(trigger, options){
+    const targetUrl = resolveLoadUrl(trigger, options);
     if (!loadModal || !loadFrame) {
+      if (!navigateDirect(targetUrl) && trigger) {
+        const fallback = trigger.getAttribute('data-load-url') || defaultLoadUrl;
+        navigateDirect(fallback);
+      }
       return;
     }
-    const targetUrl = resolveLoadUrl(trigger, options);
     if (!targetUrl) {
-      alert('Impossibile aprire il caricamento per questo box.');
+      if (!navigateDirect(defaultLoadUrl)) {
+        alert('Impossibile aprire il caricamento per questo box.');
+      }
       return;
     }
     attachLoadWatcher();
@@ -327,37 +345,41 @@ document.addEventListener('DOMContentLoaded', function(){
   const btnBuild = document.getElementById('btn-open-build');
   if (btnBuild) {
     btnBuild.addEventListener('click', function(){
+      const buildUrl = btnBuild.getAttribute('data-build-url');
+      if (!buildUrl) {
+        alert('Impossibile avviare la costruzione per questo box.');
+        return;
+      }
       const modal = document.getElementById('buildModal');
       const iframe = document.getElementById('buildFrame');
-      if (modal && iframe) {
-        // Determine the build URL from the data attribute on the button.
-        const buildUrl = btnBuild.getAttribute('data-build-url');
-        if (!buildUrl) return;
-        iframe.src = buildUrl;
-        modal.style.display = 'flex';
-        modal.setAttribute('aria-hidden', 'false');
-        // When the iframe finishes loading, check whether it has navigated
-        // away from the internal build pages (/inventory/build or
-        // /inventory/build_product).  When the path is different we assume
-        // the build has completed and reload the parent page.
-        iframe.onload = function() {
-          try {
-            const loc = iframe.contentWindow.location;
-            const href = loc && loc.href ? loc.href : '';
-            const path = loc && loc.pathname ? loc.pathname : '';
-            if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
-              iframe.onload = null;
-              modal.style.display = 'none';
-              modal.setAttribute('aria-hidden', 'true');
-              iframe.src = '';
-              alert('Costruzione completata con successo');
-              window.location.reload();
-            }
-          } catch (err) {
-            // Ignore cross-origin or other errors
-          }
-        };
+      if (!modal || !iframe) {
+        navigateDirect(buildUrl);
+        return;
       }
+      iframe.src = buildUrl;
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      // When the iframe finishes loading, check whether it has navigated
+      // away from the internal build pages (/inventory/build or
+      // /inventory/build_product).  When the path is different we assume
+      // the build has completed and reload the parent page.
+      iframe.onload = function() {
+        try {
+          const loc = iframe.contentWindow.location;
+          const href = loc && loc.href ? loc.href : '';
+          const path = loc && loc.pathname ? loc.pathname : '';
+          if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
+            iframe.onload = null;
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+            iframe.src = '';
+            alert('Costruzione completata con successo');
+            window.location.reload();
+          }
+        } catch (err) {
+          // Ignore cross-origin or other errors
+        }
+      };
     });
   }
   // Close the build modal
@@ -408,10 +430,10 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  // Convert an SVG element to a PNG data URL using a canvas.  The
-  // returned promise resolves to a data URL representing the PNG.  This
-  // helper is used when downloading the DataMatrix image.
-  function svgToPngDataUrl(svgElement, size) {
+  // Convert an SVG element to a PNG blob using a canvas.  The
+  // returned promise resolves to a Blob representing the PNG so that
+  // browsers trigger a proper file download instead of opening a new tab.
+  function svgToPngBlob(svgElement, size) {
     return new Promise(function(resolve, reject) {
       try {
         const svgString = new XMLSerializer().serializeToString(svgElement);
@@ -430,8 +452,25 @@ document.addEventListener('DOMContentLoaded', function(){
           ctx.drawImage(img, 0, 0, width, height);
           URL.revokeObjectURL(url);
           try {
-            const pngData = canvas.toDataURL('image/png');
-            resolve(pngData);
+            if (canvas.toBlob) {
+              canvas.toBlob(function(pngBlob) {
+                if (pngBlob) {
+                  resolve(pngBlob);
+                } else {
+                  reject(new Error('Impossibile generare il file PNG'));
+                }
+              }, 'image/png');
+            } else {
+              const fallbackData = canvas.toDataURL('image/png');
+              const byteString = atob(fallbackData.split(',')[1]);
+              const mimeString = fallbackData.split(',')[0].split(':')[1].split(';')[0];
+              const buffer = new ArrayBuffer(byteString.length);
+              const view = new Uint8Array(buffer);
+              for (let i = 0; i < byteString.length; i += 1) {
+                view[i] = byteString.charCodeAt(i);
+              }
+              resolve(new Blob([buffer], { type: mimeString }));
+            }
           } catch (err) {
             reject(err);
           }
@@ -459,15 +498,17 @@ document.addEventListener('DOMContentLoaded', function(){
         if (!row) return;
         const svg = row.querySelector('.dm-container svg');
         if (!svg) return;
-        svgToPngDataUrl(svg, 240).then(function(dataUrl) {
+        svgToPngBlob(svg, 240).then(function(pngBlob) {
           const link = document.createElement('a');
+          const objectUrl = URL.createObjectURL(pngBlob);
           const codeCell = row.querySelector('.production-box-item-code');
           const baseName = codeCell ? codeCell.textContent.trim() : 'datamatrix';
-          link.href = dataUrl;
+          link.href = objectUrl;
           link.download = baseName ? baseName + '-datamatrix.png' : 'datamatrix.png';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
+          URL.revokeObjectURL(objectUrl);
         }).catch(function(err) {
           console.error('Unable to download DataMatrix', err);
           alert('Impossibile scaricare il Datamatrix.');

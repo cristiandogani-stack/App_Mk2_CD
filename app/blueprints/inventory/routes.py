@@ -3045,24 +3045,30 @@ def archive() -> Any:
                                 meta_dict = {}
                             uid = None
                             try:
-                            uid = (
-                                meta_dict.get('user_id')
-                                or meta_dict.get('user')
-                                or meta_dict.get('user_username')
-                                or meta_dict.get('username')
-                                or meta_dict.get('operator')
-                            )
+                                uid_candidates = (
+                                    meta_dict.get('user_id'),
+                                    meta_dict.get('user'),
+                                    meta_dict.get('user_username'),
+                                    meta_dict.get('username'),
+                                    meta_dict.get('operator'),
+                                )
+                                for candidate in uid_candidates:
+                                    if candidate:
+                                        uid = candidate
+                                        break
                             except Exception:
                                 uid = None
+
                             if uid:
                                 try:
                                     uid_int = int(uid)
-                                    user_val = _user_display(uid_int)
                                 except Exception:
-                                    try:
-                                        user_val = _user_display(uid)
-                                    except Exception:
-                                        user_val = ''
+                                    uid_int = None
+
+                                try:
+                                    user_val = _user_display(uid_int if uid_int is not None else uid)
+                                except Exception:
+                                    user_val = ''
                         sub_nodes = []
                     nodes.append({
                         'timestamp': timestamp_val,

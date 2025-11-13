@@ -98,80 +98,15 @@ document.addEventListener('DOMContentLoaded', function(){
   const buildPanel = document.getElementById('build-inline-panel');
   const buildFrame = document.getElementById('buildFrame');
   const buildLoader = buildPanel ? buildPanel.querySelector('.build-inline-loader') : null;
-  const boxId = productionSection.getAttribute('data-box-id') || '';
-  const sectionLoadBase = productionSection.getAttribute('data-load-base') || '';
-  const defaultLoadUrl = sectionLoadBase;
+  const buildUrl = buildPanel ? buildPanel.getAttribute('data-build-url') : '';
 
-  function resolveLoadUrl(trigger, options){
-    const candidate = (options && options.baseUrl) || (trigger ? trigger.getAttribute('data-load-url') : null) || defaultLoadUrl;
-    if (!candidate) {
-      return '';
-    }
-    const params = new URLSearchParams();
-    if (boxId) {
-      params.set('box_id', boxId);
-    }
-    if (options && options.itemId) {
-      params.set('item_id', options.itemId);
-    }
-    if (options && options.autoSelect) {
-      params.set('auto_select', '1');
-    }
-    const backUrl = (options && options.backUrl) || (window.location.pathname + window.location.search);
-    if (backUrl) {
-      params.set('back_url', backUrl);
-    }
-    try {
-      const url = new URL(candidate, window.location.origin);
-      params.forEach((value, key) => {
-        url.searchParams.set(key, value);
-      });
-      let finalUrl = url.pathname + url.search;
-      if (url.hash) {
-        finalUrl += url.hash;
-      }
-      return finalUrl;
-    } catch (err) {
-      const sep = candidate.indexOf('?') === -1 ? '?' : '&';
-      return candidate + sep + params.toString();
-    }
-  }
-
-  const btnOpenLoad = document.getElementById('btn-open-load');
-  if (btnOpenLoad) {
-    btnOpenLoad.addEventListener('click', function(evt){
-      evt.preventDefault();
-      const targetUrl = resolveLoadUrl(btnOpenLoad, { autoSelect: true, backUrl: window.location.pathname + window.location.search });
-      if (targetUrl) {
-        window.location.href = targetUrl;
-      } else {
-        alert('Impossibile aprire il caricamento per questo box.');
-      }
-    });
-  }
-
-  const btnBuild = document.getElementById('btn-open-build');
-  const btnCloseBuild = document.getElementById('btn-close-build');
-
-  function showBuildPanel(){
+  function beginBuildLoad(){
     if (!buildPanel) {
       return;
     }
-    buildPanel.hidden = false;
     buildPanel.setAttribute('data-state', 'loading');
     if (buildLoader) {
       buildLoader.classList.add('is-visible');
-    }
-  }
-
-  function hideBuildPanel(){
-    if (!buildPanel) {
-      return;
-    }
-    buildPanel.hidden = true;
-    buildPanel.removeAttribute('data-state');
-    if (buildLoader) {
-      buildLoader.classList.remove('is-visible');
     }
   }
 
@@ -193,76 +128,160 @@ document.addEventListener('DOMContentLoaded', function(){
     buildFrame.src = 'about:blank';
   }
 
-  if (btnBuild) {
-    btnBuild.addEventListener('click', function(evt){
-      evt.preventDefault();
-      const buildUrl = btnBuild.getAttribute('data-build-url');
-      if (!buildUrl) {
-        alert('Impossibile avviare la costruzione per questo box.');
-        return;
-      }
-      if (!buildPanel || !buildFrame) {
-        window.location.href = buildUrl;
-        return;
-      }
-      showBuildPanel();
-      const cacheKey = buildFrame.getAttribute('data-active-url');
-      const sameTarget = cacheKey && cacheKey === buildUrl;
-      const finalUrl = buildUrl + (buildUrl.indexOf('?') === -1 ? '?' : '&') + 'ts=' + Date.now();
-      buildFrame.setAttribute('data-active-url', buildUrl);
-      if (!sameTarget) {
-        buildFrame.src = finalUrl;
-      } else if (buildLoader) {
-        buildLoader.classList.remove('is-visible');
-        buildPanel.setAttribute('data-state', 'ready');
-      }
-      buildPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+  function loadBuildFrame(targetUrl, options){
+    if (!buildPanel || !buildFrame || !targetUrl) {
+      return;
+    }
+    beginBuildLoad();
+    const cacheKey = buildFrame.getAttribute('data-active-url');
+    const sameTarget = cacheKey && cacheKey === targetUrl && !(options && options.forceReload);
+    const finalUrl = targetUrl + (targetUrl.indexOf('?') === -1 ? '?' : '&') + 'ts=' + Date.now();
+    buildFrame.setAttribute('data-active-url', targetUrl);
+    if (!sameTarget) {
+      buildFrame.src = finalUrl;
+    } else if (buildLoader) {
+      buildLoader.classList.remove('is-visible');
+      buildPanel.setAttribute('data-state', 'ready');
+    }
   }
 
   if (buildFrame) {
     buildFrame.addEventListener('load', function(){
-      if (!buildPanel || buildPanel.hidden) {
-        return;
-      }
       markBuildReady();
     });
   }
 
-  if (btnCloseBuild) {
-    btnCloseBuild.addEventListener('click', function(evt){
-      evt.preventDefault();
-      resetBuildFrame();
-      hideBuildPanel();
-      if (btnBuild) {
-        btnBuild.focus({ preventScroll: false });
-      }
-    });
+  if (buildUrl) {
+    loadBuildFrame(buildUrl, { forceReload: true });
   }
 
   if (typeof window.handleEmbeddedBuildComplete !== 'function') {
     window.handleEmbeddedBuildComplete = function(status){
       resetBuildFrame();
-      hideBuildPanel();
       if (status === 'success') {
         window.location.reload();
       }
     };
   }
 
-  const perItemButtons = document.querySelectorAll('.load-item');
-  if (perItemButtons && perItemButtons.length > 0) {
-    perItemButtons.forEach((btn) => {
-      btn.addEventListener('click', function(evt){
-        evt.stopPropagation();
-        evt.preventDefault();
-        const itemId = this.getAttribute('data-item-id');
-        const targetUrl = resolveLoadUrl(this, { itemId: itemId, autoSelect: true, backUrl: window.location.pathname + window.location.search });
-        if (targetUrl) {
-          window.location.href = targetUrl;
-        } else {
-          alert('Impossibile aprire il caricamento per questo componente.');
+  const inlineLoadPanel = document.getElementById('load-inline-panel');
+  const inlineLoadForm = document.getElementById('inline-load-form');
+  const inlineLoadStatus = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-load-status]') : null;
+  const inlineLoadSubmit = inlineLoadForm ? inlineLoadForm.querySelector('[data-load-submit]') : null;
+  const inlineSelectionWrapper = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-selection-wrapper]') : null;
+  const inlineSelectionLabel = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-selected-label]') : null;
+  const inlineItemInput = inlineLoadForm ? inlineLoadForm.querySelector('input[name="item_id"]') : null;
+  const inlineFileInputs = inlineLoadForm ? inlineLoadForm.querySelectorAll('input[type="file"]') : [];
+  const inlineRequiresDocs = inlineFileInputs && inlineFileInputs.length > 0;
+  const loadTriggers = document.querySelectorAll('[data-load-trigger]');
+  const tableRows = document.querySelectorAll('.production-box-table tbody tr');
+
+  function updateInlineLoadStatus(){
+    let docsOk = true;
+    if (inlineFileInputs && inlineFileInputs.length > 0) {
+      docsOk = Array.from(inlineFileInputs).every((inp) => inp.files && inp.files.length > 0);
+    }
+    if (inlineLoadStatus) {
+      inlineLoadStatus.textContent = docsOk ? '🟢 Documenti pronti' : '🔴 Documenti mancanti';
+    }
+    if (inlineLoadSubmit) {
+      inlineLoadSubmit.disabled = inlineRequiresDocs && !docsOk;
+    }
+  }
+
+  function updateFileNameDisplay(input){
+    if (!input) {
+      return;
+    }
+    const container = input.parentElement;
+    if (!container) {
+      return;
+    }
+    const nameSpan = container.querySelector('.document-file-name');
+    if (!nameSpan) {
+      return;
+    }
+    if (input.files && input.files.length > 0) {
+      nameSpan.textContent = input.files[0].name;
+    } else {
+      nameSpan.textContent = '';
+    }
+  }
+
+  if (inlineFileInputs && inlineFileInputs.length > 0) {
+    inlineFileInputs.forEach((input) => {
+      input.addEventListener('change', function(){
+        updateFileNameDisplay(input);
+        updateInlineLoadStatus();
+      });
+    });
+  }
+  updateInlineLoadStatus();
+
+  function clearRowHighlights(){
+    if (!tableRows) {
+      return;
+    }
+    tableRows.forEach((row) => {
+      row.classList.remove('is-targeted');
+    });
+  }
+
+  function highlightRowForButton(btn){
+    if (!btn) {
+      return;
+    }
+    const row = btn.closest('tr');
+    clearRowHighlights();
+    if (row) {
+      row.classList.add('is-targeted');
+    }
+  }
+
+  function focusFirstInput(){
+    if (!inlineLoadForm) {
+      return;
+    }
+    const firstInput = inlineLoadForm.querySelector('input[type="file"]');
+    if (firstInput) {
+      try {
+        firstInput.focus({ preventScroll: true });
+      } catch (err) {
+        firstInput.focus();
+      }
+      if ((!firstInput.files || firstInput.files.length === 0)) {
+        try {
+          firstInput.click();
+        } catch (err) {
+          // ignore
         }
+      }
+    }
+  }
+
+  if (loadTriggers && loadTriggers.length > 0) {
+    loadTriggers.forEach((btn) => {
+      btn.addEventListener('click', function(evt){
+        evt.preventDefault();
+        const itemId = btn.getAttribute('data-item-id') || '';
+        const itemLabel = btn.getAttribute('data-item-label') || (itemId ? `ID ${itemId}` : 'intero box');
+        if (inlineItemInput) {
+          inlineItemInput.value = itemId;
+        }
+        if (inlineSelectionWrapper && inlineSelectionLabel) {
+          if (itemId) {
+            inlineSelectionLabel.textContent = itemLabel;
+            inlineSelectionWrapper.hidden = false;
+          } else {
+            inlineSelectionWrapper.hidden = true;
+            inlineSelectionLabel.textContent = '';
+          }
+        }
+        highlightRowForButton(btn);
+        if (inlineLoadPanel) {
+          inlineLoadPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        focusFirstInput();
       });
     });
   }

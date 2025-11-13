@@ -59,15 +59,6 @@
       <div class="workflow-hero-actions">
         <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
         <div class="workflow-hero-buttons">
-          {% if allow_build %}
-            <button id="btn-open-build" type="button" class="btn primary"
-                    {% if box.assembly_id %}
-                      data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
-                    {% elif box.product_id %}
-                      data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
-                    {% endif %}
-            >Costruisci</button>
-          {% endif %}
           <a href="#" class="btn ghost small back-link"
              onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">← Indietro</a>
         </div>
@@ -95,8 +86,7 @@
         <div class="workflow-block-header">
           <h4>Documenti checklist</h4>
           {% if allow_load %}
-            <button id="btn-open-load" type="button" class="btn small primary"
-                    data-load-url="{{ load_base_url or '' }}">Carica documenti</button>
+            <button type="button" class="btn small primary" data-load-trigger data-item-id="" data-item-label="intero box">Carica documenti</button>
           {% endif %}
         </div>
         {% if box.required_docs and box.required_docs|length > 0 %}
@@ -124,7 +114,6 @@
                   </div>
                 </div>
                 <div class="document-card-body">
-                  <p class="muted" style="margin:0;">Contrassegnato nella checklist del componente.</p>
                 </div>
               </div>
             {% endfor %}
@@ -133,10 +122,61 @@
           <p class="muted" style="margin:0;">Nessun documento selezionato nella checklist per questo box.</p>
         {% endif %}
         {% if show_row_actions %}
-          <p class="muted" style="margin-top:12px;">Utilizza il pulsante “Carica” accanto a ciascun componente per allegare i documenti.</p>
+          <p class="muted" style="margin-top:12px;">Seleziona “Carica” accanto al componente per allegare i documenti direttamente da questa pagina.</p>
         {% endif %}
       </div>
 
+      {% if box.root_structure and not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
+        <div class="workflow-block load-inline" id="load-inline-panel" data-has-docs="{{ '1' if box.load_docs_required else '0' }}">
+          <div class="workflow-block-header">
+            <h4>Caricamento componenti</h4>
+          </div>
+          <form id="inline-load-form"
+                class="inline-load-form"
+                method="post"
+                enctype="multipart/form-data"
+                action="{{ url_for('inventory.load_component', part_id=box.root_structure.id, box_id=box.id, back_url=url_for('inventory.production_box_view', box_id=box.id)) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="item_id" value="">
+            <input type="hidden" name="quantity" value="1">
+            <div class="inline-load-status" data-load-status>{{ '🟢 Documenti pronti' if not box.load_docs_required else '🔴 Documenti mancanti' }}</div>
+            <p class="inline-load-selection" data-selection-wrapper hidden>Caricamento per <span data-selected-label></span></p>
+            {% if box.load_doc_defs %}
+              <div class="document-section inline-load-docs">
+                {% for doc in box.load_doc_defs %}
+                  <div class="document-card">
+                    <div class="document-card-header">
+                      <div class="document-card-titles">
+                        <span class="document-card-title">{{ box.load_doc_label_map.get(doc.type, doc.display_name) }}</span>
+                        {% if doc.filename %}
+                          <span class="document-card-filename" title="{{ doc.filename }}">{{ doc.filename }}</span>
+                        {% endif %}
+                      </div>
+                      <div class="document-card-meta">
+                        <a href="{{ url_for('products.download_file', filename=doc.original_path) }}"
+                           class="btn ghost small"
+                           target="_blank"
+                           download="{{ doc.filename or doc.field_name }}">Scarica</a>
+                      </div>
+                    </div>
+                    <div class="document-card-body">
+                      <input type="file" name="{{ doc.field_name }}" required>
+                      <span class="file-name document-file-name"></span>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0;">Nessuna documentazione richiesta per questo componente.</p>
+            {% endif %}
+            <div class="inline-load-footer">
+              <button type="submit" class="btn primary" data-load-submit {% if box.load_docs_required %}disabled{% endif %}>Carica</button>
+            </div>
+          </form>
+        </div>
+      {% endif %}
+
+      {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
       <div class="workflow-block">
         <div class="workflow-block-header">
           <h4>Componenti nel box</h4>
@@ -214,21 +254,27 @@
                         <button class="btn small primary load-item"
                                 type="button"
                                 data-item-id="{{ item.id }}"
-                                data-load-url="{{ load_base_url or '' }}">Carica</button>
+                                data-item-label="{{ item.product.code or item.product.name or 'Componente' }}"
+                                data-load-trigger>Carica</button>
                       </td>
                     {% endif %}
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
           </div>
         {% endif %}
       </div>
+      {% endif %}
       {% if allow_build %}
-        <div class="workflow-block build-inline" id="build-inline-panel" hidden>
+        <div class="workflow-block build-inline" id="build-inline-panel"
+             {% if box.assembly_id %}
+               data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
+             {% elif box.product_id %}
+               data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
+             {% endif %}>
           <div class="workflow-block-header">
             <h4>Procedura di costruzione</h4>
-            <button id="btn-close-build" type="button" class="btn ghost small">Chiudi</button>
           </div>
           <div class="build-inline-body">
             <div class="build-inline-loader" role="status" aria-live="polite">

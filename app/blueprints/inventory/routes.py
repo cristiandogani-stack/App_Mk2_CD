@@ -9853,6 +9853,67 @@ def production_box_view(box_id: int):
     setattr(box, 'assembly_id', assembly_id)
     setattr(box, 'root_structure', root_structure)
     setattr(box, 'root_image_filename', root_image_filename)
+
+    # ------------------------------------------------------------------
+    # Stock summary and build availability metrics
+    #
+    # Display quick indicators for operators showing how many units are
+    # already in stock and how many can still be built when accounting for
+    # existing reservations.  For finished products we leverage
+    # ``_calculate_product_stock`` (passing the reserved product mapping)
+    # to remove units tied up in open boxes.  For assemblies we reuse the
+    # recursive helpers to compute the maximum buildable quantity and then
+    # subtract reservations obtained via ``_calculate_reserved_assemblies``.
+    # When the box represents neither a product nor an assembly (e.g. a
+    # standalone component) the metrics remain undefined.
+    stock_qty: int | None = None
+    available_to_build: int | None = None
+    try:
+        product_obj = getattr(box, 'product', None)
+        if product_obj:
+            try:
+                stock_qty = int(getattr(product_obj, 'quantity_in_stock', 0) or 0)
+            except Exception:
+                stock_qty = 0
+            try:
+                reserved_products = _calculate_reserved_products()
+            except Exception:
+                reserved_products = {}
+            try:
+                available_to_build = _calculate_product_stock(product_obj, reserved_products)
+            except Exception:
+                available_to_build = 0
+        elif root_structure:
+            try:
+                stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+            except Exception:
+                stock_qty = 0
+            if getattr(root_structure, 'flag_assembly', False):
+                try:
+                    _assign_complete_qty_recursive(root_structure)
+                except Exception:
+                    pass
+                try:
+                    reserved_map = _calculate_reserved_assemblies()
+                except Exception:
+                    reserved_map = {}
+                try:
+                    complete_qty = int(getattr(root_structure, 'complete_qty', 0) or 0)
+                except Exception:
+                    complete_qty = 0
+                try:
+                    reserved_qty = int(reserved_map.get(root_structure.id, 0))
+                except Exception:
+                    reserved_qty = 0
+                avail_val = complete_qty - reserved_qty
+                if avail_val < 0:
+                    avail_val = 0
+                available_to_build = avail_val
+    except Exception:
+        stock_qty = stock_qty if stock_qty is not None else None
+        available_to_build = available_to_build if available_to_build is not None else None
+    setattr(box, 'stock_qty', stock_qty)
+    setattr(box, 'available_to_build', available_to_build)
     # Pass the root structure name directly to the template for convenience.
     # Determine any document checklist entries for this box's root structure.
     # When the warehouse operator opens the box for a part or commercial

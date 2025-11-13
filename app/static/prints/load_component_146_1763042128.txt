@@ -1,0 +1,4 @@
+Componente: comp2 (ID: 146)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Modulo certificazione qualità (Report_sullutilizzo_dei_crediti_di_Area_di_lavoro_Tondimeccanica_Oct_25_-_Nov_25.csv)

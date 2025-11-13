@@ -1,0 +1,4 @@
+Componente: comp1 (ID: 145)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Certificato 3.1 materiale (logo_3.PNG)

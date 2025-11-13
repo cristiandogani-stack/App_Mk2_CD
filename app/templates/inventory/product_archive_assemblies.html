@@ -21,7 +21,7 @@
        class="btn ghost small back-link"
        data-module-back="fallback"
        data-fallback-url="{{ url_for('inventory.product_detail', product_id=product.id) }}">← Indietro</a>
-    <div>
+    <div class="page-heading-text">
       <h2 class="page-title">Magazzino · {{ product.name }}</h2>
       <p class="page-subtitle">Archivio assiemi e componenti collegati.</p>
     </div>
@@ -50,47 +50,46 @@
       <p class="muted">Nessun evento di assiemi registrato per questo prodotto.</p>
     </div>
   {% else %}
-    <div id="assemblies-archive" class="archive-grid" style="--archive-columns: 150px 160px minmax(200px,1.4fr) minmax(220px,1.6fr) 90px 160px minmax(150px,1fr);">
-      <div class="archive-header">
-        <span>Data/Ora</span>
-        <span>DataMatrix</span>
-        <span>Nome</span>
-        <span>Descrizione</span>
-        <span>Rev.</span>
-        <span>Utente</span>
-        <span>Docs</span>
-      </div>
-      {% macro render_component(comp) %}
-        {% set has_children = comp.components is defined and comp.components|length > 0 %}
-        {% if has_children %}
-          <details class="archive-node">
-            <summary>
-              <div class="archive-cell" data-title="Data/Ora">
-                {% if comp.timestamp %}
-                  <span class="cell-text">{{ comp.timestamp.strftime('%d/%m/%Y') }}</span>
-                  <span class="muted">{{ comp.timestamp.strftime('%H:%M') }}</span>
-                {% else %}
-                  <span class="cell-text">—</span>
-                {% endif %}
-              </div>
-              <div class="archive-cell" data-title="DataMatrix">
-                <span class="dm-preview" data-code="{{ comp.datamatrix | e }}"></span>
-                {% if comp.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ comp.datamatrix }}</span>{% endif %}
-              </div>
-              <div class="archive-cell" data-title="Nome">
-                <span class="cell-text">{{ comp.name }}</span>
-              </div>
-              <div class="archive-cell" data-title="Descrizione">
-                <span class="cell-text" title="{{ comp.description if comp.description else '' }}">{{ comp.description if comp.description else '—' }}</span>
-              </div>
-              <div class="archive-cell" data-title="Rev.">
-                <span class="cell-text">{{ comp.revision if comp.revision else '—' }}</span>
-              </div>
-              <div class="archive-cell" data-title="Utente">
-                <span class="cell-text">{{ comp.user if comp.user else '—' }}</span>
-              </div>
-              <div class="archive-cell" data-title="Documenti">
-                <div class="archive-docs">
+    <div class="archive-card">
+      <div id="assemblies-archive" class="archive-accordion-list" style="--archive-columns: 130px 80px 120px minmax(190px,1.1fr) minmax(220px,1.4fr) 80px 150px 120px;">
+        <div class="archive-legend">
+          <span>Data</span>
+          <span>Ora</span>
+          <span>DataMatrix</span>
+          <span>Nome</span>
+          <span>Descrizione</span>
+          <span>Rev.</span>
+          <span>Utente</span>
+          <span>Docs</span>
+        </div>
+        {% macro render_component(comp, depth=0) %}
+          {% set has_children = comp.components is defined and comp.components|length > 0 %}
+          {% if has_children %}
+            <details class="archive-accordion" style="--depth: {{ depth }};" data-has-children="true">
+              <summary class="accordion-summary">
+                <span class="summary-cell" data-label="Data">
+                  {% if comp.timestamp %}
+                    {{ comp.timestamp.strftime('%d/%m/%Y') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </span>
+                <span class="summary-cell" data-label="Ora">
+                  {% if comp.timestamp %}
+                    {{ comp.timestamp.strftime('%H:%M') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </span>
+                <span class="summary-cell dm-cell" data-label="DataMatrix">
+                  <span class="dm-preview" data-code="{{ comp.datamatrix | e }}" aria-hidden="true"></span>
+                  {% if comp.datamatrix %}<span class="sr-only">DataMatrix {{ comp.datamatrix }}</span>{% endif %}
+                </span>
+                <span class="summary-cell" data-label="Nome">{{ comp.name }}</span>
+                <span class="summary-cell" data-label="Descrizione" title="{{ comp.description if comp.description else '' }}">{{ comp.description if comp.description else '—' }}</span>
+                <span class="summary-cell" data-label="Rev.">{{ comp.revision if comp.revision else '—' }}</span>
+                <span class="summary-cell" data-label="Utente">{{ comp.user if comp.user else '—' }}</span>
+                <span class="summary-cell docs-cell" data-label="Docs">
                   {% if comp.docs and comp.docs|length > 0 %}
                     <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
                        class="btn ghost small"
@@ -98,43 +97,39 @@
                   {% else %}
                     <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
                   {% endif %}
-                </div>
+                </span>
+              </summary>
+              <div class="accordion-body" style="--depth: {{ depth + 1 }};">
+                {% for child in comp.components %}
+                  {{ render_component(child, depth + 1) }}
+                {% endfor %}
               </div>
-            </summary>
-            <div class="archive-children">
-              {% for child in comp.components %}
-                {{ render_component(child) }}
-              {% endfor %}
-            </div>
-          </details>
-        {% else %}
-          <div class="archive-row" data-archive-row>
-            <div class="archive-cell" data-title="Data/Ora">
-              {% if comp.timestamp %}
-                <span class="cell-text">{{ comp.timestamp.strftime('%d/%m/%Y') }}</span>
-                <span class="muted">{{ comp.timestamp.strftime('%H:%M') }}</span>
-              {% else %}
-                <span class="cell-text">—</span>
-              {% endif %}
-            </div>
-            <div class="archive-cell" data-title="DataMatrix">
-              <span class="dm-preview" data-code="{{ comp.datamatrix | e }}"></span>
-              {% if comp.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ comp.datamatrix }}</span>{% endif %}
-            </div>
-            <div class="archive-cell" data-title="Nome">
-              <span class="cell-text">{{ comp.name }}</span>
-            </div>
-            <div class="archive-cell" data-title="Descrizione">
-              <span class="cell-text" title="{{ comp.description if comp.description else '' }}">{{ comp.description if comp.description else '—' }}</span>
-            </div>
-            <div class="archive-cell" data-title="Rev.">
-              <span class="cell-text">{{ comp.revision if comp.revision else '—' }}</span>
-            </div>
-            <div class="archive-cell" data-title="Utente">
-              <span class="cell-text">{{ comp.user if comp.user else '—' }}</span>
-            </div>
-            <div class="archive-cell" data-title="Documenti">
-              <div class="archive-docs">
+            </details>
+          {% else %}
+            <div class="archive-leaf-row" data-archive-row style="--depth: {{ depth }};">
+              <span class="summary-cell" data-label="Data">
+                {% if comp.timestamp %}
+                  {{ comp.timestamp.strftime('%d/%m/%Y') }}
+                {% else %}
+                  —
+                {% endif %}
+              </span>
+              <span class="summary-cell" data-label="Ora">
+                {% if comp.timestamp %}
+                  {{ comp.timestamp.strftime('%H:%M') }}
+                {% else %}
+                  —
+                {% endif %}
+              </span>
+              <span class="summary-cell dm-cell" data-label="DataMatrix">
+                <span class="dm-preview" data-code="{{ comp.datamatrix | e }}" aria-hidden="true"></span>
+                {% if comp.datamatrix %}<span class="sr-only">DataMatrix {{ comp.datamatrix }}</span>{% endif %}
+              </span>
+              <span class="summary-cell" data-label="Nome">{{ comp.name }}</span>
+              <span class="summary-cell" data-label="Descrizione" title="{{ comp.description if comp.description else '' }}">{{ comp.description if comp.description else '—' }}</span>
+              <span class="summary-cell" data-label="Rev.">{{ comp.revision if comp.revision else '—' }}</span>
+              <span class="summary-cell" data-label="Utente">{{ comp.user if comp.user else '—' }}</span>
+              <span class="summary-cell docs-cell" data-label="Docs">
                 {% if comp.docs and comp.docs|length > 0 %}
                   <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
                      class="btn ghost small"
@@ -142,15 +137,15 @@
                 {% else %}
                   <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
                 {% endif %}
-              </div>
+              </span>
             </div>
-          </div>
-        {% endif %}
-      {% endmacro %}
+          {% endif %}
+        {% endmacro %}
 
-      {% for asm in assemblies %}
-        {{ render_component(asm) }}
-      {% endfor %}
+        {% for asm in assemblies %}
+          {{ render_component(asm) }}
+        {% endfor %}
+      </div>
     </div>
   {% endif %}
 
@@ -161,8 +156,8 @@
       const container = document.getElementById('assemblies-archive');
 
       if (searchInput && container) {
-        const leafRows = () => container.querySelectorAll('.archive-row[data-archive-row]');
-        const detailNodes = () => container.querySelectorAll('details.archive-node');
+        const leafRows = () => container.querySelectorAll('.archive-leaf-row[data-archive-row]');
+        const detailNodes = () => container.querySelectorAll('details.archive-accordion');
 
         const applyFilter = (value) => {
           const query = value.toLowerCase().trim();
@@ -183,9 +178,9 @@
           });
 
           Array.from(detailNodes()).reverse().forEach((node) => {
-            const summary = node.querySelector('summary');
+            const summary = node.querySelector(':scope > summary');
             const summaryMatch = summary ? summary.textContent.toLowerCase().includes(query) : false;
-            const children = node.querySelectorAll(':scope > .archive-children > *');
+            const children = node.querySelectorAll(':scope > .accordion-body > *');
             let childVisible = false;
             children.forEach((child) => {
               if (child.style.display !== 'none') {
@@ -194,7 +189,10 @@
             });
             const shouldShow = summaryMatch || childVisible;
             node.style.display = shouldShow ? '' : 'none';
-            node.open = shouldShow;
+            node.open = shouldShow && !!query;
+            if (!shouldShow) {
+              node.open = false;
+            }
           });
         };
 
@@ -210,17 +208,17 @@
         if (!code) {
           return;
         }
+        el.innerHTML = '';
         if (canRenderDM) {
           try {
             const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-            el.innerHTML = '';
             el.appendChild(svg);
             return;
           } catch (err) {
-            // fall back to text rendering
+            // fall back to placeholder rendering below
           }
         }
-        el.textContent = code;
+        el.classList.add('dm-preview--fallback');
       });
     });
   </script>

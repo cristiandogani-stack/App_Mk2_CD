@@ -23,7 +23,7 @@
        class="btn ghost small back-link"
        data-module-back="fallback"
        data-fallback-url="{{ url_for('inventory.product_detail', product_id=product.id) }}">← Indietro</a>
-    <div>
+    <div class="page-heading-text">
       <h2 class="page-title">Magazzino · {{ product.name }}</h2>
       <p class="page-subtitle">Archivio componenti e tracciabilità dei documenti caricati.</p>
     </div>
@@ -52,55 +52,60 @@
       <p class="muted">Nessun evento registrato per questo prodotto.</p>
     </div>
   {% else %}
-    <div id="product-archive-list" class="archive-grid" style="--archive-columns: 150px 160px minmax(180px,1.2fr) minmax(220px,1.5fr) 90px 160px minmax(150px,1fr);">
-      <div class="archive-header">
-        <span>Data/Ora</span>
-        <span>DataMatrix</span>
-        <span>Nome</span>
-        <span>Descrizione</span>
-        <span>Rev.</span>
-        <span>Utente</span>
-        <span>Docs</span>
+    <div class="archive-card">
+      <div class="archive-table-wrapper">
+        <table class="archive-table" id="product-archive-table">
+          <thead>
+            <tr>
+              <th scope="col">Data</th>
+              <th scope="col">Ora</th>
+              <th scope="col">DataMatrix</th>
+              <th scope="col">Nome</th>
+              <th scope="col">Descrizione</th>
+              <th scope="col">Rev.</th>
+              <th scope="col">Utente</th>
+              <th scope="col">Docs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ev in events_data %}
+              <tr data-archive-row>
+                <td data-title="Data">
+                  {% if ev.timestamp %}
+                    {{ ev.timestamp.strftime('%d/%m/%Y') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-title="Ora">
+                  {% if ev.timestamp %}
+                    {{ ev.timestamp.strftime('%H:%M') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-title="DataMatrix" class="dm-cell">
+                  <span class="dm-preview" data-code="{{ ev.datamatrix | e }}" aria-hidden="true"></span>
+                  {% if ev.datamatrix %}<span class="sr-only">DataMatrix {{ ev.datamatrix }}</span>{% endif %}
+                </td>
+                <td data-title="Nome">{{ ev.name }}</td>
+                <td data-title="Descrizione" title="{{ ev.description if ev.description else '' }}">{{ ev.description if ev.description else '—' }}</td>
+                <td data-title="Rev.">{{ ev.revision if ev.revision else '—' }}</td>
+                <td data-title="Utente">{{ ev.user if ev.user else '—' }}</td>
+                <td data-title="Documenti" class="docs-cell">
+                  {% if ev.docs and ev.docs|length > 0 %}
+                    <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
+                       class="btn ghost small"
+                       onclick="event.stopPropagation();">Docs</a>
+                  {% else %}
+                    <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% for ev in events_data %}
-        <div class="archive-row" data-archive-row>
-          <div class="archive-cell" data-title="Data/Ora">
-            {% if ev.timestamp %}
-              <span class="cell-text">{{ ev.timestamp.strftime('%d/%m/%Y') }}</span>
-              <span class="muted">{{ ev.timestamp.strftime('%H:%M') }}</span>
-            {% else %}
-              <span class="cell-text">—</span>
-            {% endif %}
-          </div>
-          <div class="archive-cell" data-title="DataMatrix">
-            <span class="dm-preview" data-code="{{ ev.datamatrix | e }}"></span>
-            {% if ev.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ ev.datamatrix }}</span>{% endif %}
-          </div>
-          <div class="archive-cell" data-title="Nome">
-            <span class="cell-text">{{ ev.name }}</span>
-          </div>
-          <div class="archive-cell" data-title="Descrizione">
-            <span class="cell-text" title="{{ ev.description if ev.description else '' }}">{{ ev.description if ev.description else '—' }}</span>
-          </div>
-          <div class="archive-cell" data-title="Rev.">
-            <span class="cell-text">{{ ev.revision if ev.revision else '—' }}</span>
-          </div>
-          <div class="archive-cell" data-title="Utente">
-            <span class="cell-text">{{ ev.user if ev.user else '—' }}</span>
-          </div>
-          <div class="archive-cell" data-title="Documenti">
-            <div class="archive-docs">
-              {% if ev.docs and ev.docs|length > 0 %}
-                <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
-                   class="btn ghost small"
-                   onclick="event.stopPropagation();">Docs</a>
-              {% else %}
-                <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      {% endfor %}
     </div>
   {% endif %}
 
@@ -108,9 +113,9 @@
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const searchInput = document.getElementById('product-archive-search');
-      const list = document.getElementById('product-archive-list');
-      if (searchInput && list) {
-        const rows = () => list.querySelectorAll('[data-archive-row]');
+      const table = document.getElementById('product-archive-table');
+      if (searchInput && table) {
+        const rows = () => table.querySelectorAll('tbody tr[data-archive-row]');
         searchInput.addEventListener('input', function () {
           const query = this.value.toLowerCase().trim();
           rows().forEach((row) => {
@@ -120,24 +125,24 @@
         });
       }
 
-      const dmContainers = document.querySelectorAll('#product-archive-list .dm-preview[data-code]');
+      const dmContainers = document.querySelectorAll('#product-archive-table .dm-preview[data-code]');
       const canRenderDM = typeof window.DATAMatrix === 'function';
       dmContainers.forEach((el) => {
         const code = el.getAttribute('data-code');
         if (!code) {
           return;
         }
+        el.innerHTML = '';
         if (canRenderDM) {
           try {
             const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-            el.innerHTML = '';
             el.appendChild(svg);
             return;
           } catch (err) {
-            // fall through to plain-text rendering
+            // fall back to placeholder rendering below
           }
         }
-        el.textContent = code;
+        el.classList.add('dm-preview--fallback');
       });
     });
   </script>

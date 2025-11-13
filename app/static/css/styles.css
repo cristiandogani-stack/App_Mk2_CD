@@ -2588,15 +2588,24 @@ input.checklist-toggle:checked::before {
   background: repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.25), rgba(148, 163, 184, 0.25) 6px, transparent 6px, transparent 12px);
 }
 
-.docs-cell {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 6px;
+td.docs-cell {
+  vertical-align: middle;
 }
 
-.docs-cell .btn {
+td.docs-cell .btn {
+  margin: 0;
+}
+
+.accordion-summary .docs-cell,
+.archive-leaf-row .docs-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: stretch;
+}
+
+.accordion-summary .docs-cell .btn,
+.archive-leaf-row .docs-cell .btn {
   margin: 0;
 }
 

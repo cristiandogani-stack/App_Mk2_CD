@@ -2550,7 +2550,7 @@ input.checklist-toggle:checked::before {
 .archive-table td {
   padding: 12px 16px;
   border-bottom: 1px solid var(--glass-stroke);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .archive-table tbody tr:last-child td {
@@ -2636,7 +2636,7 @@ input.checklist-toggle:checked::before {
   grid-template-columns: var(--archive-columns, repeat(6, minmax(120px, 1fr)));
   gap: 12px;
   padding: 14px 24px 14px calc(24px + (var(--depth, 0) * 18px));
-  align-items: flex-start;
+  align-items: center;
   cursor: pointer;
   position: relative;
 }
@@ -2672,7 +2672,7 @@ input.checklist-toggle:checked::before {
   grid-template-columns: var(--archive-columns, repeat(6, minmax(120px, 1fr)));
   gap: 12px;
   padding: 12px 24px 12px calc(24px + (var(--depth, 0) * 18px));
-  align-items: flex-start;
+  align-items: center;
   border-radius: var(--radius);
 }
 

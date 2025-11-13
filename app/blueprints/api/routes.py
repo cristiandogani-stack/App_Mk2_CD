@@ -597,12 +597,21 @@ def load_production_box(box_id: int) -> Any:
     # Mark the selected stock items as completed and record scan events.
     # While iterating, accumulate increments per product and per root
     # structure so that we can update their quantities in bulk afterwards.
+    # Only production boxes explicitly created for finished products
+    # (``PRODOTTO``) should affect ``Product.quantity_in_stock``.  Boxes
+    # for parts, commercial items or assemblies should update only the
+    # underlying structures; counting them as finished products inflates
+    # the warehouse stock figures displayed in the Magazzino overview.
     from collections import defaultdict
     from ...models import Product, ProductComponent, Structure
 
     product_increments: defaultdict[int, int] = defaultdict(int)
     # Map structure key -> (representative Structure, count)
     structure_increments: dict[tuple[str | int, str], dict[str, Any]] = {}
+    # Normalise the box type once so we can decide whether to touch the
+    # finished product stock counter.
+    box_type_normalised = (box.box_type or '').strip().upper()
+    is_finished_product_box = box_type_normalised == 'PRODOTTO'
 
     # Create a scan event for each stock item.  Even when multiple stock
     # items share the same DataMatrix (lot management), a separate event
@@ -615,7 +624,7 @@ def load_production_box(box_id: int) -> Any:
         item.status = 'COMPLETATO'
         # Increment product counter: each stock item contributes one unit to the product
         prod = item.product
-        if prod:
+        if prod and is_finished_product_box:
             product_increments[prod.id] += 1
         # Build metadata for the scan event.  Start with the box id and include
         # the user identifier and username when an authenticated operator is

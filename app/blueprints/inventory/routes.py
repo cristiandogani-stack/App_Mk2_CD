@@ -9634,13 +9634,40 @@ def production_box_view(box_id: int):
         required_docs: list[dict[str, str]] = []
         if root_structure:
             from ...checklist import load_checklist
+
+            # Human readable titles for known document folders.  The keys match the
+            # directory names used under ``static/documents`` and ``static/tmp_components``.
+            doc_label_map: dict[str, str] = {
+                'qualita': 'Modulo certificazione qualità',
+                '3_1_materiale': 'Certificato 3.1 materiale',
+                'step_tavole': 'Tavole di montaggio',
+                'funzionamento': 'Verifica di funzionamento',
+                'istruzioni': 'Istruzioni di montaggio',
+                'ddt_fornitore': 'DDT fornitore',
+                'altro': 'Documentazione aggiuntiva',
+            }
+
             data = load_checklist()
             sid = str(root_structure.id)
             if sid in data:
                 for rel_path in data[sid]:
-                    # Split the path to show only the filename
-                    name = os.path.basename(rel_path)
-                    required_docs.append({'path': rel_path, 'name': name})
+                    safe_path = (rel_path or '').replace('\\', '/').strip()
+                    if not safe_path:
+                        continue
+                    lowered = safe_path.lower()
+                    doc_type = 'altro'
+                    for key in doc_label_map.keys():
+                        if f"/{key.lower()}/" in lowered:
+                            doc_type = key
+                            break
+                    title = doc_label_map.get(doc_type, doc_type.replace('_', ' ').title())
+                    filename = os.path.basename(safe_path)
+                    required_docs.append({
+                        'path': safe_path,
+                        'title': title,
+                        'filename': filename,
+                        'type': doc_type,
+                    })
     except Exception:
         required_docs = []
     # Attach the required documents list to the box object

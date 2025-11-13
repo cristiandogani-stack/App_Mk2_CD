@@ -101,13 +101,21 @@
           <div class="document-section">
             {% for doc in box.required_docs %}
               {% set doc_path = doc.path if doc.path else None %}
-              {% set doc_name = doc.name if doc.name else (doc_path.split('/')[-1] if doc_path else 'Documento') %}
+              {% set doc_title = doc.title if doc.title else 'Documento' %}
+              {% set doc_filename = doc.filename if doc.filename else (doc_path.split('/')[-1] if doc_path else '') %}
               <div class="document-card">
                 <div class="document-card-header">
-                  <span class="document-card-title">{{ doc_name }}</span>
+                  <div class="document-card-titles">
+                    <span class="document-card-title">{{ doc_title }}</span>
+                    {% if doc_filename %}
+                      <span class="document-card-filename" title="{{ doc_filename }}">{{ doc_filename }}</span>
+                    {% endif %}
+                  </div>
                   <div class="document-card-meta">
                     {% if doc_path %}
-                      <a href="{{ url_for('static', filename=doc_path) }}" class="btn ghost small" download="{{ doc_name }}">Scarica</a>
+                      <a href="{{ url_for('static', filename=doc_path) }}"
+                         class="btn ghost small"
+                         download="{{ doc_filename or doc_title }}">Scarica</a>
                     {% else %}
                       <span class="muted" style="white-space:nowrap;">—</span>
                     {% endif %}
@@ -237,33 +245,9 @@
 </div>
 {% endif %}
 
-{% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-<div id="loadModal" class="workflow-modal"
-     style="display:none;"
-     data-base-url="{{ load_base_url or '' }}"
-     data-box-id="{{ box.id }}"
-     role="dialog"
-     aria-modal="true"
-     aria-labelledby="loadModalTitle"
-     aria-hidden="true"
-     aria-busy="false">
-  <div class="workflow-modal-dialog">
-    <div class="workflow-modal-header">
-      <div class="workflow-modal-copy">
-        <span class="workflow-modal-eyebrow">Caricamento documenti</span>
-        <h3 id="loadModalTitle" class="workflow-modal-title">Carica {{ hero_name }}</h3>
-      </div>
-      <button id="btn-close-load" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
-    </div>
-    <div class="workflow-modal-loader" aria-hidden="true">
-      <div class="workflow-spinner" role="presentation"></div>
-      <p>Caricamento interfaccia…</p>
-    </div>
-    <iframe id="loadFrame" src="" class="workflow-modal-frame" title="Pannello caricamento"></iframe>
-  </div>
-</div>
-{% endif %}
-
 {% endblock %}
 
-<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}" defer></script>
+{% block extra_scripts %}
+  {{ super() }}
+  <script defer src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
+{% endblock %}

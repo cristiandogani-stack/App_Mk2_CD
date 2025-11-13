@@ -1421,9 +1421,24 @@ html[data-theme='dark'] .document-card{
   flex-wrap:wrap;
 }
 
+.document-card-titles{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
 .document-card-title{
   font-size:15px;
   font-weight:600;
+}
+
+.document-card-filename{
+  font-size:12px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .document-card-meta{
@@ -1431,6 +1446,7 @@ html[data-theme='dark'] .document-card{
   flex-direction:column;
   gap:4px;
   min-width:140px;
+  align-items:flex-end;
 }
 
 .document-card-meta .btn{
@@ -1942,25 +1958,6 @@ html[data-theme='dark'] .dm-container{
   color:var(--muted);
 }
 
-.dm-container img{
-  display:block;
-  width:60px;
-  height:60px;
-  object-fit:contain;
-}
-
-.dm-fallback{
-  display:inline-block;
-  max-width:120px;
-  font-family:'JetBrains Mono', monospace;
-  font-size:11px;
-  line-height:1.2;
-  text-align:center;
-  word-break:break-word;
-  white-space:normal;
-  color:var(--muted);
-}
-
 .workflow-modal{
   position:fixed;
   inset:0;
@@ -1976,9 +1973,9 @@ html[data-theme='dark'] .dm-container{
 .workflow-modal-dialog{
   position:relative;
   width:100%;
-  max-width:min(1100px, 95vw);
-  min-height:70vh;
-  max-height:95vh;
+  max-width:min(1280px, 96vw);
+  min-height:78vh;
+  max-height:96vh;
   background:var(--glass-bg, rgba(255,255,255,0.88));
   border-radius:20px;
   border:1px solid var(--glass-stroke);
@@ -2021,7 +2018,7 @@ html[data-theme='dark'] .dm-container{
   border:0;
   width:100%;
   background:var(--surface, #fff);
-  min-height:60vh;
+  min-height:calc(78vh - 150px);
 }
 
 .workflow-modal-close{
@@ -2080,13 +2077,17 @@ html[data-theme='dark'] .dm-container{
   }
   .workflow-modal-dialog{
     border-radius:16px;
-    max-height:90vh;
-    min-height:60vh;
+    max-height:94vh;
+    min-height:70vh;
   }
   .workflow-modal-header{
     flex-direction:column;
     align-items:flex-start;
   }
+}
+
+body.modal-open{
+  overflow:hidden;
 }
 
 .workflow-meta{

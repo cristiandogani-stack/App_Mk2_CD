@@ -1376,6 +1376,14 @@ def build_assembly(assembly_id: int):
     assembly = Structure.query.get_or_404(assembly_id)
     # Determine if the build page is rendered in embedded mode (e.g. inside an iframe).
     embedded_flag = bool(request.args.get('embedded'))
+    fragment_mode = bool(request.args.get('fragment'))
+    template_name = 'inventory/partials/build_assembly_fragment.html' if fragment_mode else 'inventory/build_assembly.html'
+
+    def _render_build(**context):
+        context.setdefault('embedded', embedded_flag)
+        if fragment_mode:
+            context['inline_mode'] = True
+        return render_template(template_name, **context)
     # Capture the referring URL so that we can return the user to the page they
     # came from after completing or cancelling the build.  If no referrer
     # exists (e.g. when the page is opened directly), fall back to the
@@ -1873,8 +1881,7 @@ def build_assembly(assembly_id: int):
                 flash('La quantità deve essere maggiore di zero.', 'warning')
                 # Re-render page with defaults
                 ready_parts = all((p.quantity_in_stock or 0) > 0 for p in parts) and len(parts) > 0
-                return render_template(
-                    'inventory/build_assembly.html',
+                return _render_build(
                     assembly=assembly,
                     parts=parts,
                     ready_parts=ready_parts,
@@ -1883,14 +1890,12 @@ def build_assembly(assembly_id: int):
                     existing_docs=existing_docs,
                     required_docs=required_docs,
                     user_docs=user_docs,
-                    back_url=back_url,
-                    embedded=embedded_flag
+                    back_url=back_url
                 )
         except ValueError:
             flash('Inserisci un numero valido per la quantità.', 'warning')
             ready_parts = all((p.quantity_in_stock or 0) > 0 for p in parts) and len(parts) > 0
-            return render_template(
-                'inventory/build_assembly.html',
+            return _render_build(
                 assembly=assembly,
                 parts=parts,
                 ready_parts=ready_parts,
@@ -1899,8 +1904,7 @@ def build_assembly(assembly_id: int):
                 existing_docs=existing_docs,
                 required_docs=required_docs,
                 user_docs=user_docs,
-                back_url=back_url,
-                embedded=embedded_flag
+                back_url=back_url
             )
         # Check part stock sufficiency.  Group identical parts and ensure that
         # the available stock is sufficient for the required number of units.
@@ -2039,8 +2043,7 @@ def build_assembly(assembly_id: int):
             msgs.extend(insuff_messages)
             flash('\n'.join(msgs), 'danger')
             ready_parts = False
-            return render_template(
-                'inventory/build_assembly.html',
+            return _render_build(
                 assembly=assembly,
                 parts=parts,
                 ready_parts=ready_parts,
@@ -2049,8 +2052,7 @@ def build_assembly(assembly_id: int):
                 existing_docs=existing_docs,
                 required_docs=required_docs,
                 user_docs=user_docs,
-                back_url=back_url,
-                embedded=embedded_flag
+                back_url=back_url
             )
         # Validate documentation uploads: each existing document requires a replacement
         missing_docs: list[str] = []
@@ -2729,8 +2731,7 @@ def build_assembly(assembly_id: int):
     # Overall readiness: documents uploaded, parts in stock and associations complete
     ready_all = ready_parts and docs_ready and assoc_ready
     ready = False
-    return render_template(
-        'inventory/build_assembly.html',
+    return _render_build(
         assembly=assembly,
         parts=parts,
         ready_parts=ready_parts,
@@ -2740,7 +2741,6 @@ def build_assembly(assembly_id: int):
         required_docs=required_docs,
         user_docs=user_docs,
         back_url=from_url,
-        embedded=embedded_flag,
         required_quantities=required_quantities,
         associated_counts=associated_counts,
         assembly_code=assembly_code,
@@ -7904,6 +7904,14 @@ def build_product(product_id: int) -> Any:
     # the modal and refresh itself.  ``box_id_param`` identifies the
     # production box initiating the build.
     embedded_flag: bool = bool(request.args.get('embedded'))
+    fragment_mode = bool(request.args.get('fragment'))
+    template_name = 'inventory/partials/build_product_fragment.html' if fragment_mode else 'inventory/build_product.html'
+
+    def _render_product(**context):
+        context.setdefault('embedded', embedded_flag)
+        if fragment_mode:
+            context['inline_mode'] = True
+        return render_template(template_name, **context)
     box_id_param: str | None = request.args.get('box_id')
 
     # Lookup the product and its BOM definition.  Each BOMLine lists
@@ -8369,8 +8377,7 @@ def build_product(product_id: int) -> Any:
         # page.  Capture this here so that it can be passed through to
         # the template and persisted in the hidden form field on POST.
         back_url = request.referrer or url_for('inventory.product_detail', product_id=product.id)
-        return render_template(
-            'inventory/build_product.html',
+        return _render_product(
             product=product,
             children=children,
             doc_map=doc_map,
@@ -8386,7 +8393,6 @@ def build_product(product_id: int) -> Any:
             associated_counts=associated_counts,
             assembly_code=assembly_code,
             active_tab='products',
-            embedded=embedded_flag,
             box_id=box_id_param
         )
     # -------------------------------------------------------------------
@@ -8483,8 +8489,7 @@ def build_product(product_id: int) -> Any:
         back_url_val = request.form.get('back_url') or (request.referrer or url_for('inventory.product_detail', product_id=product.id))
         # Return the build page with updated readiness flags.  The build button will
         # remain disabled until all file inputs have a file selected.
-        return render_template(
-            'inventory/build_product.html',
+        return _render_product(
             product=product,
             children=children,
             doc_map=doc_map,
@@ -8500,7 +8505,6 @@ def build_product(product_id: int) -> Any:
             associated_counts=associated_counts,
             assembly_code=assembly_code,
             active_tab='products',
-            embedded=embedded_flag,
             box_id=box_id_param
         )
     # Recompute association readiness.  If any child product has fewer

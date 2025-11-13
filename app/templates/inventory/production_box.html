@@ -83,12 +83,13 @@
       </div>
 
       <div class="workflow-block">
-        <div class="workflow-block-header">
-          <h4>Documenti checklist</h4>
-          {% if allow_load %}
-            <button type="button" class="btn small primary" data-load-trigger data-item-id="" data-item-label="intero box">Carica documenti</button>
-          {% endif %}
-        </div>
+        {% set show_checklist_title = box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
+        {% if show_checklist_title %}
+          <div class="workflow-block-header">
+            <h4>Documenti checklist</h4>
+          </div>
+        {% endif %}
+      {% if not (allow_load and box.box_type not in ['ASSIEME', 'PRODOTTO']) %}
         {% if box.required_docs and box.required_docs|length > 0 %}
           <div class="document-section">
             {% for doc in box.required_docs %}
@@ -113,67 +114,67 @@
                     {% endif %}
                   </div>
                 </div>
-                <div class="document-card-body">
-                </div>
+                <div class="document-card-body"></div>
               </div>
             {% endfor %}
           </div>
         {% else %}
           <p class="muted" style="margin:0;">Nessun documento selezionato nella checklist per questo box.</p>
         {% endif %}
-        {% if show_row_actions %}
-          <p class="muted" style="margin-top:12px;">Seleziona “Carica” accanto al componente per allegare i documenti direttamente da questa pagina.</p>
-        {% endif %}
+      {% endif %}
       </div>
 
       {% if box.root_structure and not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-        <div class="workflow-block load-inline" id="load-inline-panel" data-has-docs="{{ '1' if box.load_docs_required else '0' }}">
+        <form id="inline-load-form"
+              class="workflow-block load-inline load-inline-form"
+              method="post"
+              enctype="multipart/form-data"
+              action="{{ url_for('inventory.load_component', part_id=box.root_structure.id, box_id=box.id, back_url=url_for('inventory.production_box_view', box_id=box.id)) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="item_id" value="">
+          <input type="hidden" name="quantity" value="1">
           <div class="workflow-block-header">
-            <h4>Caricamento componenti</h4>
+            <h4>Caricamento documenti</h4>
+            <div class="load-status-pill" data-load-status>{{ '🟢 Documenti pronti' if not box.load_docs_required else '🔴 Documenti mancanti' }}</div>
           </div>
-          <form id="inline-load-form"
-                class="inline-load-form"
-                method="post"
-                enctype="multipart/form-data"
-                action="{{ url_for('inventory.load_component', part_id=box.root_structure.id, box_id=box.id, back_url=url_for('inventory.production_box_view', box_id=box.id)) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="item_id" value="">
-            <input type="hidden" name="quantity" value="1">
-            <div class="inline-load-status" data-load-status>{{ '🟢 Documenti pronti' if not box.load_docs_required else '🔴 Documenti mancanti' }}</div>
-            <p class="inline-load-selection" data-selection-wrapper hidden>Caricamento per <span data-selected-label></span></p>
-            {% if box.load_doc_defs %}
-              <div class="document-section inline-load-docs">
-                {% for doc in box.load_doc_defs %}
-                  <div class="document-card">
-                    <div class="document-card-header">
-                      <div class="document-card-titles">
-                        <span class="document-card-title">{{ box.load_doc_label_map.get(doc.type, doc.display_name) }}</span>
-                        {% if doc.filename %}
-                          <span class="document-card-filename" title="{{ doc.filename }}">{{ doc.filename }}</span>
-                        {% endif %}
-                      </div>
-                      <div class="document-card-meta">
-                        <a href="{{ url_for('products.download_file', filename=doc.original_path) }}"
-                           class="btn ghost small"
-                           target="_blank"
-                           download="{{ doc.filename or doc.field_name }}">Scarica</a>
-                      </div>
+          <p class="muted" data-selection-helper>Seleziona un componente dalla tabella per associare i documenti caricati.</p>
+          {% if box.load_doc_defs %}
+            <div class="document-section inline-load-docs">
+              {% for doc in box.load_doc_defs %}
+                <div class="document-card" data-doc-required>
+                  <div class="document-card-header">
+                    <div class="document-card-titles">
+                      <span class="document-card-title">{{ box.load_doc_label_map.get(doc.type, doc.display_name) }}</span>
+                      {% if doc.filename %}
+                        <span class="document-card-filename" title="{{ doc.filename }}">{{ doc.filename }}</span>
+                      {% endif %}
                     </div>
-                    <div class="document-card-body">
-                      <input type="file" name="{{ doc.field_name }}" required>
-                      <span class="file-name document-file-name"></span>
+                    <div class="document-card-meta">
+                      <a href="{{ url_for('products.download_file', filename=doc.original_path) }}"
+                         class="btn ghost small"
+                         target="_blank"
+                         download="{{ doc.filename or doc.field_name }}">Scarica</a>
                     </div>
                   </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="muted" style="margin:0;">Nessuna documentazione richiesta per questo componente.</p>
-            {% endif %}
-            <div class="inline-load-footer">
-              <button type="submit" class="btn primary" data-load-submit {% if box.load_docs_required %}disabled{% endif %}>Carica</button>
+                  <div class="document-card-body">
+                    <input type="file"
+                           name="{{ doc.field_name }}"
+                           id="loadField_{{ loop.index }}"
+                           data-load-input
+                           required>
+                    <button type="button" class="btn small primary" data-load-trigger-button>Carica documento</button>
+                    <span class="document-file-name" data-load-filename></span>
+                  </div>
+                </div>
+              {% endfor %}
             </div>
-          </form>
-        </div>
+          {% else %}
+            <p class="muted" style="margin:0;">Nessuna documentazione richiesta per questo componente.</p>
+          {% endif %}
+          <div class="inline-load-footer">
+            <button type="submit" class="btn primary" data-load-submit {% if box.load_docs_required %}disabled{% endif %}>Carica componente</button>
+          </div>
+        </form>
       {% endif %}
 
       {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
@@ -251,11 +252,11 @@
                     </td>
                     {% if show_row_actions %}
                       <td data-title="Azioni" class="text-right">
-                        <button class="btn small primary load-item"
+                        <button class="btn small ghost select-item"
                                 type="button"
                                 data-item-id="{{ item.id }}"
                                 data-item-label="{{ item.product.code or item.product.name or 'Componente' }}"
-                                data-load-trigger>Carica</button>
+                                data-select-item>Seleziona</button>
                       </td>
                     {% endif %}
                 </tr>
@@ -269,10 +270,14 @@
       {% if allow_build %}
         <div class="workflow-block build-inline" id="build-inline-panel"
              {% if box.assembly_id %}
-               data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}?embedded=1&box_id={{ box.id }}"
+               data-build-url="{{ url_for('inventory.build_assembly', assembly_id=box.assembly_id) }}"
+               data-build-type="assembly"
              {% elif box.product_id %}
-               data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}?embedded=1&box_id={{ box.id }}"
-             {% endif %}>
+               data-build-url="{{ url_for('inventory.build_product', product_id=box.product_id) }}"
+               data-build-type="product"
+             {% endif %}
+             data-state="loading"
+             data-box-id="{{ box.id }}">
           <div class="workflow-block-header">
             <h4>Procedura di costruzione</h4>
           </div>
@@ -281,7 +286,7 @@
               <div class="workflow-spinner" role="presentation"></div>
               <p>Caricamento interfaccia…</p>
             </div>
-            <iframe id="buildFrame" src="" class="build-inline-frame" title="Procedura costruzione"></iframe>
+            <div class="build-inline-fragment" data-build-container></div>
           </div>
         </div>
       {% endif %}

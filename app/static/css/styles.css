@@ -1801,24 +1801,37 @@ html[data-theme='dark'] .build-inline-body{
   color:var(--muted);
 }
 
+.build-inline-fragment{
+  min-height:420px;
+  padding:0;
+  overflow:auto;
+}
+
 .build-inline[data-state='loading'] .build-inline-loader{
   display:flex;
 }
 
-.build-inline-frame{
+.build-inline[data-state='loading'] .build-inline-fragment{
+  opacity:0.3;
+  pointer-events:none;
+}
+
+.build-inline[data-state='ready'] .build-inline-loader{
   display:none;
-  width:100%;
-  min-height:70vh;
-  border:0;
-  background:#fff;
 }
 
-html[data-theme='dark'] .build-inline-frame{
-  background:#fff;
+.inline-build-fragment .workflow-container{
+  box-shadow:none;
+  background:transparent;
+  padding:0;
 }
 
-.build-inline[data-state='ready'] .build-inline-frame{
-  display:block;
+.inline-build-fragment .workflow-body{
+  padding:24px 0 0;
+}
+
+.inline-build-fragment .workflow-footer{
+  padding-bottom:0;
 }
 
 .load-inline{
@@ -1827,7 +1840,7 @@ html[data-theme='dark'] .build-inline-frame{
   gap:16px;
 }
 
-.inline-load-form{
+.load-inline-form{
   display:flex;
   flex-direction:column;
   gap:16px;
@@ -1837,18 +1850,23 @@ html[data-theme='dark'] .build-inline-frame{
   background:rgba(255,255,255,0.28);
 }
 
-html[data-theme='dark'] .inline-load-form{
+html[data-theme='dark'] .load-inline-form{
   background:rgba(17,25,40,0.5);
 }
 
-.inline-load-status{
+.load-status-pill{
   font-weight:600;
   font-size:14px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(0,0,0,0.05);
 }
 
-.inline-load-selection{
-  font-size:14px;
-  color:var(--muted);
+html[data-theme='dark'] .load-status-pill{
+  background:rgba(255,255,255,0.08);
 }
 
 .inline-load-docs{

@@ -96,96 +96,129 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   const buildPanel = document.getElementById('build-inline-panel');
-  const buildFrame = document.getElementById('buildFrame');
   const buildLoader = buildPanel ? buildPanel.querySelector('.build-inline-loader') : null;
-  const buildUrl = buildPanel ? buildPanel.getAttribute('data-build-url') : '';
+  const buildContainer = buildPanel ? buildPanel.querySelector('[data-build-container]') : null;
+  const buildBaseUrl = buildPanel ? buildPanel.getAttribute('data-build-url') : '';
+  const buildBoxId = buildPanel ? buildPanel.getAttribute('data-box-id') : '';
 
-  function beginBuildLoad(){
-    if (!buildPanel) {
+  function toggleBuildLoading(isLoading){
+    if (!buildPanel || !buildLoader) {
       return;
     }
-    buildPanel.setAttribute('data-state', 'loading');
-    if (buildLoader) {
-      buildLoader.classList.add('is-visible');
-    }
+    buildPanel.setAttribute('data-state', isLoading ? 'loading' : 'ready');
+    buildLoader.classList.toggle('is-visible', !!isLoading);
   }
 
-  function markBuildReady(){
-    if (!buildPanel) {
+  function executeEmbeddedScripts(scope){
+    if (!scope) {
       return;
     }
-    buildPanel.setAttribute('data-state', 'ready');
-    if (buildLoader) {
-      buildLoader.classList.remove('is-visible');
-    }
-  }
-
-  function resetBuildFrame(){
-    if (!buildFrame) {
-      return;
-    }
-    buildFrame.removeAttribute('data-active-url');
-    buildFrame.src = 'about:blank';
-  }
-
-  function loadBuildFrame(targetUrl, options){
-    if (!buildPanel || !buildFrame || !targetUrl) {
-      return;
-    }
-    beginBuildLoad();
-    const cacheKey = buildFrame.getAttribute('data-active-url');
-    const sameTarget = cacheKey && cacheKey === targetUrl && !(options && options.forceReload);
-    const finalUrl = targetUrl + (targetUrl.indexOf('?') === -1 ? '?' : '&') + 'ts=' + Date.now();
-    buildFrame.setAttribute('data-active-url', targetUrl);
-    if (!sameTarget) {
-      buildFrame.src = finalUrl;
-    } else if (buildLoader) {
-      buildLoader.classList.remove('is-visible');
-      buildPanel.setAttribute('data-state', 'ready');
-    }
-  }
-
-  if (buildFrame) {
-    buildFrame.addEventListener('load', function(){
-      markBuildReady();
+    const scripts = scope.querySelectorAll('script');
+    scripts.forEach((oldScript) => {
+      const newScript = document.createElement('script');
+      Array.from(oldScript.attributes).forEach((attr) => {
+        newScript.setAttribute(attr.name, attr.value);
+      });
+      if (oldScript.textContent) {
+        newScript.textContent = oldScript.textContent;
+      }
+      oldScript.replaceWith(newScript);
     });
   }
 
-  if (buildUrl) {
-    loadBuildFrame(buildUrl, { forceReload: true });
-  }
-
-  if (typeof window.handleEmbeddedBuildComplete !== 'function') {
-    window.handleEmbeddedBuildComplete = function(status){
-      resetBuildFrame();
-      if (status === 'success') {
-        window.location.reload();
+  function attachInlineBuildHandlers(root){
+    if (!root) {
+      return;
+    }
+    const form = root.querySelector('form');
+    if (!form) {
+      return;
+    }
+    form.addEventListener('submit', function(evt){
+      evt.preventDefault();
+      if (!buildContainer) {
+        return;
       }
-    };
+      const submitUrl = new URL(form.getAttribute('action') || buildBaseUrl, window.location.href);
+      submitUrl.searchParams.set('fragment', '1');
+      submitUrl.searchParams.set('inline', '1');
+      if (buildBoxId) {
+        submitUrl.searchParams.set('box_id', buildBoxId);
+      }
+      toggleBuildLoading(true);
+      fetch(submitUrl.toString(), {
+        method: 'POST',
+        body: new FormData(form),
+      }).then((resp) => {
+        if (resp.redirected) {
+          window.location.reload();
+          return null;
+        }
+        return resp.text();
+      }).then((html) => {
+        if (typeof html === 'string') {
+          buildContainer.innerHTML = html;
+          executeEmbeddedScripts(buildContainer);
+          attachInlineBuildHandlers(buildContainer);
+        }
+      }).catch(() => {
+        // Leave current content intact on error
+      }).finally(() => {
+        toggleBuildLoading(false);
+      });
+    });
   }
 
-  const inlineLoadPanel = document.getElementById('load-inline-panel');
+  function loadBuildFragment(){
+    if (!buildContainer || !buildBaseUrl) {
+      return;
+    }
+    const url = new URL(buildBaseUrl, window.location.href);
+    url.searchParams.set('fragment', '1');
+    url.searchParams.set('inline', '1');
+    if (buildBoxId) {
+      url.searchParams.set('box_id', buildBoxId);
+    }
+    toggleBuildLoading(true);
+    fetch(url.toString(), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    }).then((resp) => resp.text())
+      .then((html) => {
+        buildContainer.innerHTML = html;
+        executeEmbeddedScripts(buildContainer);
+        attachInlineBuildHandlers(buildContainer);
+      })
+      .catch(() => {
+        buildContainer.innerHTML = '<p class="muted" style="margin:0;">Impossibile caricare la procedura di costruzione.</p>';
+      })
+      .finally(() => {
+        toggleBuildLoading(false);
+      });
+  }
+
+  if (buildPanel && buildContainer && buildBaseUrl) {
+    loadBuildFragment();
+  }
+
   const inlineLoadForm = document.getElementById('inline-load-form');
-  const inlineLoadStatus = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-load-status]') : null;
+  const inlineLoadStatus = inlineLoadForm ? inlineLoadForm.querySelector('[data-load-status]') : null;
   const inlineLoadSubmit = inlineLoadForm ? inlineLoadForm.querySelector('[data-load-submit]') : null;
-  const inlineSelectionWrapper = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-selection-wrapper]') : null;
-  const inlineSelectionLabel = inlineLoadPanel ? inlineLoadPanel.querySelector('[data-selected-label]') : null;
+  const inlineSelectionHelper = inlineLoadForm ? inlineLoadForm.querySelector('[data-selection-helper]') : null;
   const inlineItemInput = inlineLoadForm ? inlineLoadForm.querySelector('input[name="item_id"]') : null;
-  const inlineFileInputs = inlineLoadForm ? inlineLoadForm.querySelectorAll('input[type="file"]') : [];
-  const inlineRequiresDocs = inlineFileInputs && inlineFileInputs.length > 0;
-  const loadTriggers = document.querySelectorAll('[data-load-trigger]');
+  const inlineFileInputs = inlineLoadForm ? inlineLoadForm.querySelectorAll('[data-load-input]') : [];
+  const inlineSelectButtons = document.querySelectorAll('[data-select-item]');
   const tableRows = document.querySelectorAll('.production-box-table tbody tr');
 
   function updateInlineLoadStatus(){
-    let docsOk = true;
-    if (inlineFileInputs && inlineFileInputs.length > 0) {
-      docsOk = Array.from(inlineFileInputs).every((inp) => inp.files && inp.files.length > 0);
-    }
+    const docsOk = inlineFileInputs && inlineFileInputs.length > 0
+      ? Array.from(inlineFileInputs).every((inp) => inp.files && inp.files.length > 0)
+      : true;
+    const itemSelected = inlineItemInput && inlineItemInput.value;
     if (inlineLoadStatus) {
       inlineLoadStatus.textContent = docsOk ? '🟢 Documenti pronti' : '🔴 Documenti mancanti';
     }
     if (inlineLoadSubmit) {
-      inlineLoadSubmit.disabled = inlineRequiresDocs && !docsOk;
+      inlineLoadSubmit.disabled = !docsOk || !itemSelected;
     }
   }
 
@@ -210,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   if (inlineFileInputs && inlineFileInputs.length > 0) {
     inlineFileInputs.forEach((input) => {
-      input.addEventListener('change', function(){
+      input.addEventListener('change', () => {
         updateFileNameDisplay(input);
         updateInlineLoadStatus();
       });
@@ -238,51 +271,73 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
-  function focusFirstInput(){
-    if (!inlineLoadForm) {
-      return;
+  function applySelection(itemId, label, sourceBtn){
+    if (inlineItemInput) {
+      inlineItemInput.value = itemId || '';
     }
-    const firstInput = inlineLoadForm.querySelector('input[type="file"]');
-    if (firstInput) {
-      try {
-        firstInput.focus({ preventScroll: true });
-      } catch (err) {
-        firstInput.focus();
-      }
-      if ((!firstInput.files || firstInput.files.length === 0)) {
-        try {
-          firstInput.click();
-        } catch (err) {
-          // ignore
-        }
-      }
+    if (inlineSelectionHelper) {
+      inlineSelectionHelper.textContent = itemId
+        ? `Caricamento per ${label || `ID ${itemId}`}`
+        : 'Seleziona un componente dalla tabella per associare i documenti caricati.';
+    }
+    if (sourceBtn) {
+      highlightRowForButton(sourceBtn);
+    }
+    updateInlineLoadStatus();
+    if (inlineLoadForm) {
+      inlineLoadForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
 
-  if (loadTriggers && loadTriggers.length > 0) {
-    loadTriggers.forEach((btn) => {
-      btn.addEventListener('click', function(evt){
+  if (inlineSelectButtons && inlineSelectButtons.length > 0) {
+    inlineSelectButtons.forEach((btn) => {
+      btn.addEventListener('click', (evt) => {
         evt.preventDefault();
         const itemId = btn.getAttribute('data-item-id') || '';
-        const itemLabel = btn.getAttribute('data-item-label') || (itemId ? `ID ${itemId}` : 'intero box');
-        if (inlineItemInput) {
-          inlineItemInput.value = itemId;
-        }
-        if (inlineSelectionWrapper && inlineSelectionLabel) {
-          if (itemId) {
-            inlineSelectionLabel.textContent = itemLabel;
-            inlineSelectionWrapper.hidden = false;
-          } else {
-            inlineSelectionWrapper.hidden = true;
-            inlineSelectionLabel.textContent = '';
-          }
-        }
-        highlightRowForButton(btn);
-        if (inlineLoadPanel) {
-          inlineLoadPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-        focusFirstInput();
+        const itemLabel = btn.getAttribute('data-item-label') || '';
+        applySelection(itemId, itemLabel, btn);
       });
+    });
+  }
+
+  if (tableRows && tableRows.length > 0) {
+    tableRows.forEach((row) => {
+      row.addEventListener('click', (evt) => {
+        if (evt.target && evt.target.closest('button')) {
+          return;
+        }
+        const btn = row.querySelector('[data-select-item]');
+        if (btn) {
+          const itemId = btn.getAttribute('data-item-id') || '';
+          const itemLabel = btn.getAttribute('data-item-label') || '';
+          applySelection(itemId, itemLabel, btn);
+        }
+      });
+    });
+  }
+
+  if (inlineLoadForm) {
+    const triggerButtons = inlineLoadForm.querySelectorAll('[data-load-trigger-button]');
+    if (triggerButtons && triggerButtons.length > 0) {
+      triggerButtons.forEach((btn) => {
+        btn.addEventListener('click', (evt) => {
+          evt.preventDefault();
+          const wrapper = btn.parentElement;
+          if (!wrapper) {
+            return;
+          }
+          const input = wrapper.querySelector('input[type="file"]');
+          if (input) {
+            input.click();
+          }
+        });
+      });
+    }
+
+    inlineLoadForm.addEventListener('submit', (evt) => {
+      if (inlineLoadSubmit && inlineLoadSubmit.disabled) {
+        evt.preventDefault();
+      }
     });
   }
 

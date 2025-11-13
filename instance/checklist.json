@@ -1,8 +1,8 @@
 {
-  "2": [
-    "tmp_components/comp1/qualita/dbeaver.exe"
-  ],
   "3": [
-    "tmp_components/comp2/ddt_fornitore/swt-gdip-win32-4969r18.dll"
+    "tmp_components/comp2/qualita/logo.png"
+  ],
+  "2": [
+    "tmp_components/comp1/step_tavole/DB100_88.xlsx"
   ]
 }

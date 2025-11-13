@@ -3642,7 +3642,7 @@ def archive() -> Any:
     # information.  To present the revision of each component we look up the
     # current Structure by name.  When revisions were stored at the time of
     # the build via ScanEvent meta, those values should be used instead.
-    from ...models import Structure, ScanEvent  # ensure Structure and ScanEvent are available
+    from ...models import ScanEvent  # ensure ScanEvent is available
     import json as _json
     def _add_revision_nodes(nodes: list[dict[str, Any]]) -> None:
         """
@@ -3650,8 +3650,10 @@ def archive() -> Any:
 
         Prefer the revision stored in the earliest ScanEvent meta for the
         component's DataMatrix code when available.  When no such event
-        exists or lacks revision data, fall back to the current Structure
-        revision.  Recursively update nested component nodes.
+        exists or lacks revision data, fall back to the static revision
+        persisted in prior ScanEvent metadata.  Recursively update nested
+        component nodes without consulting the current anagrafica so that
+        historical entries remain immutable when revisions change later.
         """
         for node in nodes or []:
             revision_val = ''
@@ -3681,22 +3683,19 @@ def archive() -> Any:
                             revision_val = rev_from_meta
                     except Exception:
                         revision_val = ''
-            # Fallback: derive revision from current Structure when no meta revision found
-            if not revision_val:
+            # Fallback: use the static revision captured in earlier scan events when available.
+            if not revision_val and dm_code:
                 try:
-                    nm = node.get('name')
+                    static_fields = _static_fields_for_dm(dm_code)
                 except Exception:
-                    nm = None
-                if nm:
+                    static_fields = {}
+                if static_fields:
                     try:
-                        s_obj = Structure.query.filter_by(name=nm).first()
+                        rev_static = static_fields.get('revision') or ''
+                        if rev_static:
+                            revision_val = rev_static
                     except Exception:
-                        s_obj = None
-                    if s_obj:
-                        try:
-                            revision_val = s_obj.revision_label or ''
-                        except Exception:
-                            revision_val = ''
+                        pass
             # Assign revision to node
             try:
                 node['revision'] = revision_val or ''
@@ -4006,6 +4005,8 @@ def load_component(part_id: int):
         production_timestamp = int(time.time())
         produzione_component_id = f"{safe_name}_{production_timestamp}"
         produzione_base = None  # lazily initialised when needed
+        # Track saved documents so they can be attached to individual stock items later on.
+        saved_doc_records: list[dict[str, str]] = []
         for doc_def in doc_defs:
             field = doc_def['field_name']
             file_obj = request.files.get(field)
@@ -4093,6 +4094,7 @@ def load_component(part_id: int):
                         doc_record = Document(owner_type='BOX', owner_id=box_id_int,
                                               doc_type=doc_type, url=rel_url, status='CARICATO')
                         db.session.add(doc_record)
+                        saved_doc_records.append({'doc_type': doc_type, 'url': rel_url})
                     except Exception:
                         # Ignore database errors when adding the document
                         pass
@@ -4144,6 +4146,42 @@ def load_component(part_id: int):
                 else:
                     # No item id: load all items in the box
                     selected_items = list(box.stock_items)
+                # Replicate uploaded documents onto each selected stock item so that
+                # component-specific archives display only the files associated with
+                # that item.  When documents already exist for a stock item they are
+                # not duplicated.
+                if saved_doc_records:
+                    for si in selected_items or []:
+                        si_id = getattr(si, 'id', None)
+                        if not si_id:
+                            continue
+                        for doc_info in saved_doc_records:
+                            doc_type_val = doc_info.get('doc_type') or 'altro'
+                            doc_url_val = doc_info.get('url') or ''
+                            if not doc_url_val:
+                                continue
+                            try:
+                                existing_doc = Document.query.filter_by(
+                                    owner_type='STOCK',
+                                    owner_id=si_id,
+                                    url=doc_url_val,
+                                ).first()
+                            except Exception:
+                                existing_doc = None
+                            if existing_doc:
+                                continue
+                            try:
+                                stock_doc = Document(
+                                    owner_type='STOCK',
+                                    owner_id=si_id,
+                                    doc_type=doc_type_val,
+                                    url=doc_url_val,
+                                    status='CARICATO',
+                                )
+                                db.session.add(stock_doc)
+                            except Exception:
+                                # Ignore failures when creating per-item document records
+                                continue
                 # Collect increments per product and per structure.  Import model
                 # classes under local aliases to avoid shadowing the global
                 # ``Structure`` symbol (importing a name inside a function makes it
@@ -4562,6 +4600,7 @@ def product_archive_view(product_id: int):
         # production box referenced in the scan event's meta.  Only
         # include documents with status CARICATO or APPROVATO.
         doc_objs: list[Document] = []
+        stock_doc_objs: list[Document] = []
         # Gather documents from stock items with the same DM
         try:
             stock_items_same_dm = _StockItem.query.filter_by(datamatrix_code=dm_code).all()
@@ -4572,7 +4611,9 @@ def product_archive_view(product_id: int):
                 si_docs = Document.query.filter_by(owner_type='STOCK', owner_id=si.id).all()
             except Exception:
                 si_docs = []
-            doc_objs.extend(si_docs or [])
+            stock_doc_objs.extend(si_docs or [])
+        if stock_doc_objs:
+            doc_objs.extend(stock_doc_objs)
         # Also collect documents attached to the production box for this event
         box_id_val = None
         try:
@@ -4583,7 +4624,7 @@ def product_archive_view(product_id: int):
             box_id_val = meta_dict.get('box_id')
         except Exception:
             box_id_val = None
-        if box_id_val is not None:
+        if box_id_val is not None and not stock_doc_objs:
             try:
                 # Convert to int if possible
                 try:
@@ -4873,7 +4914,7 @@ def product_archive_view(product_id: int):
         # assemblies so that components used in subassemblies are also
         # excluded from the standalone component archive.
         #-----------------------------------------------------------------
-        consumed_codes: set[str] = set()
+        consumed_counts: dict[str, int] = {}
         visited_assemblies: set[str] = set()
         def _gather_children(parent_code: str) -> None:
             """Recursively collect DataMatrix codes of stock items whose
@@ -4897,24 +4938,53 @@ def product_archive_view(product_id: int):
                 if not child or not child.datamatrix_code:
                     continue
                 c_code = child.datamatrix_code
-                consumed_codes.add(c_code)
+                try:
+                    consumed_counts[c_code] = consumed_counts.get(c_code, 0) + 1
+                except Exception:
+                    consumed_counts[c_code] = 1
                 # If the child is itself an assembly, recurse
                 if 'T=ASSIEME' in c_code.upper():
                     _gather_children(c_code)
         # Initiate recursion from all known assembly codes
         for asm_code in assembly_codes:
             _gather_children(asm_code)
-        # Filter events_data: exclude events whose datamatrix belongs to a
-        # consumed component.  This ensures components used in assembly
-        # builds are shown only in the assemblies archive and not in the
-        # standalone component archive.
-        filtered_events: list[dict[str, Any]] = []
-        for ev in events_data:
-            dm_code = ev.get('datamatrix') or ''
-            if dm_code in consumed_codes:
-                continue
-            filtered_events.append(ev)
-        events_data = filtered_events
+        # Filter events_data: exclude the same number of events per
+        # DataMatrix code as components consumed in assemblies.  For
+        # lot-managed components multiple stock items share the same
+        # DataMatrix; removing only the matched count ensures remaining
+        # unassociated items stay visible in the component archive.
+        if consumed_counts:
+            from datetime import datetime as _dt  # local import for ordering
+            events_by_dm: dict[str, list[tuple[int, Any]]] = {}
+            for ev in events_data:
+                dm_code = ev.get('datamatrix') or ''
+                if not dm_code:
+                    continue
+                try:
+                    ev_id = ev.get('id')
+                except Exception:
+                    ev_id = None
+                if ev_id is None:
+                    continue
+                events_by_dm.setdefault(dm_code, []).append((ev_id, ev.get('timestamp')))
+            ids_to_remove: set[int] = set()
+            for dm_code, count in consumed_counts.items():
+                if count <= 0:
+                    continue
+                entries = events_by_dm.get(dm_code)
+                if not entries:
+                    continue
+                try:
+                    entries_sorted = sorted(
+                        entries,
+                        key=lambda item: (item[1] or _dt.min)
+                    )
+                except Exception:
+                    entries_sorted = entries
+                for ev_id, _ in entries_sorted[:count]:
+                    ids_to_remove.add(ev_id)
+            if ids_to_remove:
+                events_data = [ev for ev in events_data if ev.get('id') not in ids_to_remove]
     except Exception:
         # On any error, leave events_data unchanged
         pass
@@ -5064,11 +5134,13 @@ def product_docs_view(product_id: int):
                     include_stock = getattr(stock_item, 'production_box_id', None) == box_id_int
             except Exception:
                 include_stock = False
+            has_stock_docs = False
             if include_stock:
                 try:
                     doc_records = Document.query.filter_by(owner_type='STOCK', owner_id=stock_item.id).all()
                 except Exception:
                     doc_records = []
+                has_stock_docs = bool(doc_records)
                 for doc in doc_records:
                     # Derive category from the path of the document URL (folder name)
                     try:
@@ -5109,29 +5181,30 @@ def product_docs_view(product_id: int):
                 # Without a specified context, use the stock item's box id if present
                 if box_id:
                     box_ids_to_search = [box_id]
-            for b_id in box_ids_to_search:
-                try:
-                    box_docs = Document.query.filter_by(owner_type='BOX', owner_id=b_id).all()
-                except Exception:
-                    box_docs = []
-                for doc in box_docs:
+            if not has_stock_docs:
+                for b_id in box_ids_to_search:
                     try:
-                        raw_path = doc.url or ''
-                        category = os.path.basename(os.path.dirname(raw_path)) or 'varie'
+                        box_docs = Document.query.filter_by(owner_type='BOX', owner_id=b_id).all()
                     except Exception:
-                        category = 'varie'
-                    fname = os.path.basename(doc.url or '')
-                    doc_url = ''
-                    try:
-                        doc_url = url_for('products.download_file', filename=doc.url)
-                    except Exception:
-                        doc_url = _static_url(doc.url or '')
-                    docs_detail.append({
-                        'name': _original_filename(fname),
-                        'url': doc_url,
-                        'category': category,
-                        'real_name': fname,
-                    })
+                        box_docs = []
+                    for doc in box_docs:
+                        try:
+                            raw_path = doc.url or ''
+                            category = os.path.basename(os.path.dirname(raw_path)) or 'varie'
+                        except Exception:
+                            category = 'varie'
+                        fname = os.path.basename(doc.url or '')
+                        doc_url = ''
+                        try:
+                            doc_url = url_for('products.download_file', filename=doc.url)
+                        except Exception:
+                            doc_url = _static_url(doc.url or '')
+                        docs_detail.append({
+                            'name': _original_filename(fname),
+                            'url': doc_url,
+                            'category': category,
+                            'real_name': fname,
+                        })
         # Attempt to locate additional documents on disk for this assembly.  This mirrors
         # the legacy behaviour in the assembly archive view and ensures that assemblies
         # without database-linked documents still show available production or compiled
@@ -5255,11 +5328,13 @@ def product_docs_view(product_id: int):
                     include_stock = getattr(stock_item, 'production_box_id', None) == box_id_int
             except Exception:
                 include_stock = False
+            has_stock_docs = False
             if include_stock:
                 try:
                     doc_records = Document.query.filter_by(owner_type='STOCK', owner_id=stock_item.id).all()
                 except Exception:
                     doc_records = []
+                has_stock_docs = bool(doc_records)
                 for doc in doc_records:
                     try:
                         raw_path = doc.url or ''
@@ -5291,29 +5366,30 @@ def product_docs_view(product_id: int):
             else:
                 if box_id:
                     box_ids_to_search = [box_id]
-            for b_id in box_ids_to_search:
-                try:
-                    box_docs = Document.query.filter_by(owner_type='BOX', owner_id=b_id).all()
-                except Exception:
-                    box_docs = []
-                for doc in box_docs:
+            if not has_stock_docs:
+                for b_id in box_ids_to_search:
                     try:
-                        raw_path = doc.url or ''
-                        category = os.path.basename(os.path.dirname(raw_path)) or 'varie'
+                        box_docs = Document.query.filter_by(owner_type='BOX', owner_id=b_id).all()
                     except Exception:
-                        category = 'varie'
-                    fname = os.path.basename(doc.url or '')
-                    doc_url = ''
-                    try:
-                        doc_url = url_for('products.download_file', filename=doc.url)
-                    except Exception:
-                        doc_url = _static_url(doc.url or '')
-                    docs_detail.append({
-                        'name': _original_filename(fname),
-                        'url': doc_url,
-                        'category': category,
-                        'real_name': fname,
-                    })
+                        box_docs = []
+                    for doc in box_docs:
+                        try:
+                            raw_path = doc.url or ''
+                            category = os.path.basename(os.path.dirname(raw_path)) or 'varie'
+                        except Exception:
+                            category = 'varie'
+                        fname = os.path.basename(doc.url or '')
+                        doc_url = ''
+                        try:
+                            doc_url = url_for('products.download_file', filename=doc.url)
+                        except Exception:
+                            doc_url = _static_url(doc.url or '')
+                        docs_detail.append({
+                            'name': _original_filename(fname),
+                            'url': doc_url,
+                            'category': category,
+                            'real_name': fname,
+                        })
         # Append documents stored in the production archive (Produzione/archivio)
         # and static folders.  When displaying a finished product (dm_type == PRODOTTO)
         # we always scan the archive/static documents regardless of the box context.
@@ -5596,6 +5672,7 @@ def product_event_docs_view(product_id: int):
         events_for_code = []
     # Collect documents from all stock items with this DM code
     doc_objs: list[Document] = []
+    stock_doc_objs: list[Document] = []
     try:
         stock_items_same_dm = StockItem.query.filter_by(datamatrix_code=dm_code).all()
     except Exception:
@@ -5605,7 +5682,9 @@ def product_event_docs_view(product_id: int):
             si_docs = Document.query.filter_by(owner_type='STOCK', owner_id=si.id).all()
         except Exception:
             si_docs = []
-        doc_objs.extend(si_docs or [])
+        stock_doc_objs.extend(si_docs or [])
+    if stock_doc_objs:
+        doc_objs.extend(stock_doc_objs)
     # Collect documents from boxes referenced in all events for this code
     for ev in events_for_code or []:
         box_id_val = None
@@ -5625,7 +5704,7 @@ def product_event_docs_view(product_id: int):
                     box_id_val = getattr(si, 'production_box_id', None)
                 except Exception:
                     box_id_val = None
-        if box_id_val is not None:
+        if box_id_val is not None and not stock_doc_objs:
             try:
                 # Convert to int when possible
                 try:
@@ -6329,6 +6408,7 @@ def product_archive_assemblies_view(product_id: int):
                     doc_records = Document.query.filter_by(owner_type='STOCK', owner_id=si.id).all()
                 except Exception:
                     doc_records = []
+                has_stock_docs = bool(doc_records)
                 for doc in doc_records:
                     url = ''
                     try:
@@ -6340,7 +6420,7 @@ def product_archive_assemblies_view(product_id: int):
                 # Include any documents associated with the production box of this stock item.
                 # A component may have documents uploaded at the box level (owner_type='BOX').
                 box_id = getattr(si, 'production_box_id', None)
-                if box_id:
+                if box_id and not has_stock_docs:
                     try:
                         box_docs = Document.query.filter_by(owner_type='BOX', owner_id=box_id).all()
                     except Exception:
@@ -6485,6 +6565,7 @@ def product_archive_assemblies_view(product_id: int):
                     'description': desc_val,
                     'user': user_display,
                     'action': 'COMPONENTE',
+                    'stock_item_id': getattr(si, 'id', None),
                     'docs': docs,
                     'image_data': _generate_dm_image(dm_val),
                 }
@@ -6633,6 +6714,7 @@ def product_archive_assemblies_view(product_id: int):
                     'description': desc_val,
                     'user': user_display,
                     'action': f"COMPONENTE{qty_label}",
+                    'stock_item_id': None,
                     'docs': [],
                     'image_data': _generate_dm_image(dm_val),
                 }
@@ -6772,6 +6854,7 @@ def product_archive_assemblies_view(product_id: int):
                 'description': child_desc,
                 'user': user_display,
                 'action': f"COMPONENTE{qty_label}",
+                'stock_item_id': None,
                 'docs': [],
                 'image_data': _generate_dm_image(child_dm),
             }
@@ -6965,6 +7048,7 @@ def product_archive_assemblies_view(product_id: int):
                 'description': sub_desc,
                 'user': '',
                 'action': 'COMPONENTE',
+                'stock_item_id': None,
                 'docs': sub_docs,
                 'image_data': _generate_dm_image(sub_dm),
             }
@@ -7006,7 +7090,8 @@ def product_archive_assemblies_view(product_id: int):
         for row in rows or []:
             filtered_docs: list[tuple[str, str]] = []
             for name, url in row.get('docs') or []:
-                key = f"{name}|{url or ''}"
+                scope_val = row.get('stock_item_id') or row.get('datamatrix') or ''
+                key = f"{scope_val}|{name}|{url or ''}"
                 if key not in assigned_global_comp_doc_keys:
                     assigned_global_comp_doc_keys.add(key)
                     filtered_docs.append((name, url))
@@ -7105,11 +7190,13 @@ def product_archive_assemblies_view(product_id: int):
             stock_item = StockItem.query.filter_by(datamatrix_code=assembly_code).first()
         except Exception:
             stock_item = None
+        has_stock_docs = False
         if stock_item:
             try:
                 doc_records = Document.query.filter_by(owner_type='STOCK', owner_id=stock_item.id).all()
             except Exception:
                 doc_records = []
+            has_stock_docs = bool(doc_records)
             # Helper to return the stored filename without modification.  This ensures
             # that the user sees exactly the name of the file that was saved
             # (including any compiled suffix) in the archive views.
@@ -7132,7 +7219,7 @@ def product_archive_assemblies_view(product_id: int):
                 fname = os.path.basename(doc.url or '')
                 asm_docs.append((_derive_original(fname), url))
         box_id = getattr(pb, 'production_box_id', None)
-        if box_id:
+        if box_id and not has_stock_docs:
             try:
                 box_docs = Document.query.filter_by(owner_type='BOX', owner_id=box_id).all()
             except Exception:
@@ -7517,11 +7604,13 @@ def product_archive_assemblies_view(product_id: int):
             stock_item = _StockItem.query.filter_by(datamatrix_code=assembly_code).first()
         except Exception:
             stock_item = None
+        has_stock_docs = False
         if stock_item:
             try:
                 doc_records = Document.query.filter_by(owner_type='STOCK', owner_id=stock_item.id).all()
             except Exception:
                 doc_records = []
+            has_stock_docs = bool(doc_records)
             for doc in doc_records:
                 url = ''
                 try:
@@ -7538,7 +7627,7 @@ def product_archive_assemblies_view(product_id: int):
             box_id = getattr(b, 'production_box_id', None)
         except Exception:
             box_id = None
-        if box_id:
+        if box_id and not has_stock_docs:
             try:
                 box_docs = Document.query.filter_by(owner_type='BOX', owner_id=box_id).all()
             except Exception:

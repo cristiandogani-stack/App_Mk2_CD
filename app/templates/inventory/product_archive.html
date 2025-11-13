@@ -17,163 +17,129 @@
 {% block title %}Magazzino – {{ product.name }}: Archivio componenti{% endblock %}
 
 {% block content %}
-<section class="section">
-  <style>
-  /* Ensure archive grid cells wrap text and do not overflow.
-     The min-width:0 allows grid items to shrink below their content size,
-     enabling long strings to break on available space. */
-  #archive-body .component-row > div,
-  .component-header .component-row > div {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  /* Allow buttons within the documents cell to wrap properly and not stretch the cell */
-  #archive-body .component-row > div:last-child {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  /* Truncate long descriptions and show full text on hover */
-  .desc-ellipsis {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Slightly indent the DataMatrix column header to align with its content. */
-  .component-header .component-row > div:nth-child(2) {
-    padding-left: 1.5rem;
-  }
-  </style>
-  {# Back navigation: always return to the product detail page. #}
-  <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
-  <h2 class="section-title">Magazzino: {{ product.name }} – Archivio componenti</h2>
-  {# Tab bar: include the new "Archivio assiemi" link next to the component archive. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
-    {# Removed "Prodotto" tab from navigation. #}
-    <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
-       class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
-    <a href="{{ url_for('inventory.product_parts', product_id=product.id) }}"
-       class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
-    <a href="{{ url_for('inventory.product_commercial', product_id=product.id) }}"
-       class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
-    <a href="{{ url_for('inventory.product_archive_view', product_id=product.id) }}"
-       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Archivio&nbsp;componenti</a>
-    <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product.id) }}"
-       class="btn small{{ ' primary' if active_tab == 'archive_assiemi' else ' ghost' }}">Archivio&nbsp;assiemi</a>
-  </div>
-  {# Search box to filter archive rows.  Filters on multiple columns.  Align centre. #}
-  {# Center the search bar to match the assemblies archive page.  The container
-     uses flexbox to centre the input horizontally. #}
-  <div style="margin-bottom:12px; display:flex; justify-content:center;">
-    <input type="text" id="archive-search" class="input" placeholder="Cerca componenti..."
-           style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
-  </div>
-  {% if events_data|length == 0 %}
-    <p class="muted">Nessun evento registrato per questo prodotto.</p>
-  {% else %}
-    {# Header row for the component archive.  Seven columns are defined
-       (remove the action column) to match the assemblies and history views.
-       The widths sum to 100%: 10% 14% 18% 20% 8% 12% 18%. #}
-    <div class="component-header">
-      <!-- Adjust column widths: remove the action column and redistribute its space -->
-      <div class="component-row" style="grid-template-columns: 10% 14% 18% 20% 8% 12% 18%;">
-        <div>Data/Ora</div>
-        <div>DataMatrix</div>
-        <div>Nome</div>
-        <div>Descrizione</div>
-        <div>Rev.</div>
-        <div>Utente</div>
-        <div>Docs</div>
-      </div>
+<section class="section archive-page">
+  <div class="page-heading">
+    <a href="{{ url_for('inventory.product_detail', product_id=product.id) }}"
+       class="btn ghost small back-link"
+       data-module-back="fallback"
+       data-fallback-url="{{ url_for('inventory.product_detail', product_id=product.id) }}">← Indietro</a>
+    <div>
+      <h2 class="page-title">Magazzino · {{ product.name }}</h2>
+      <p class="page-subtitle">Archivio componenti e tracciabilità dei documenti caricati.</p>
     </div>
-    <div id="archive-body">
+  </div>
+
+  <div class="archive-toolbar">
+    <div class="archive-tabs">
+      <a href="{{ url_for('inventory.product_assemblies', product_id=product.id) }}"
+         class="btn small{{ ' primary' if active_tab == 'assemblies' else ' ghost' }}">Assiemi</a>
+      <a href="{{ url_for('inventory.product_parts', product_id=product.id) }}"
+         class="btn small{{ ' primary' if active_tab == 'parts' else ' ghost' }}">Parti</a>
+      <a href="{{ url_for('inventory.product_commercial', product_id=product.id) }}"
+         class="btn small{{ ' primary' if active_tab == 'commercial' else ' ghost' }}">Commerciali</a>
+      <a href="{{ url_for('inventory.product_archive_view', product_id=product.id) }}"
+         class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Archivio&nbsp;componenti</a>
+      <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product.id) }}"
+         class="btn small{{ ' primary' if active_tab == 'archive_assiemi' else ' ghost' }}">Archivio&nbsp;assiemi</a>
+    </div>
+    <div class="archive-search">
+      <input type="search" id="product-archive-search" placeholder="Cerca evento..." aria-label="Cerca nell'archivio componenti">
+    </div>
+  </div>
+
+  {% if events_data|length == 0 %}
+    <div class="archive-empty">
+      <p class="muted">Nessun evento registrato per questo prodotto.</p>
+    </div>
+  {% else %}
+    <div id="product-archive-list" class="archive-grid" style="--archive-columns: 150px 160px minmax(180px,1.2fr) minmax(220px,1.5fr) 90px 160px minmax(150px,1fr);">
+      <div class="archive-header">
+        <span>Data/Ora</span>
+        <span>DataMatrix</span>
+        <span>Nome</span>
+        <span>Descrizione</span>
+        <span>Rev.</span>
+        <span>Utente</span>
+        <span>Docs</span>
+      </div>
       {% for ev in events_data %}
-        <div class="component-row glass archive-row" style="grid-template-columns: 10% 14% 18% 20% 8% 12% 18%; border:1px solid var(--glass-stroke); border-radius:var(--radius); margin-bottom:4px; padding:8px 12px;">
-          <div>
+        <div class="archive-row" data-archive-row>
+          <div class="archive-cell" data-title="Data/Ora">
             {% if ev.timestamp %}
-              <span>{{ ev.timestamp.strftime('%Y-%m-%d') }}</span><br>
-              <span>{{ ev.timestamp.strftime('%H:%M:%S') }}</span>
-            {% endif %}
-          </div>
-          <div style="text-align:center;">
-            <div class="dm-container" data-code="{{ ev.datamatrix | e }}" style="display:inline-block; background:#fff; padding:2px; border:1px solid var(--glass-stroke); border-radius:4px; width:60px; height:60px; line-height:60px; text-align:center; font-family:monospace; font-size:10px; overflow:hidden; white-space:nowrap;"></div>
-          </div>
-          <div style="overflow-wrap:anywhere; word-break:break-word;">{{ ev.name }}</div>
-          <div class="desc-ellipsis" title="{{ ev.description if ev.description else '' }}">{{ ev.description if ev.description else '—' }}</div>
-          <div style="overflow-wrap:anywhere; word-break:break-word;">{{ ev.revision if ev.revision else '—' }}</div>
-          <div style="overflow-wrap:anywhere; word-break:break-word;">{{ ev.user if ev.user else '—' }}</div>
-          <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
-            {# Present a "Docs" button for each event when documents exist.  The
-               link includes the scan event id as a query parameter (ev_id) in
-               addition to the DataMatrix code.  The docs view uses this id
-               to reconstruct the exact set of documents assigned to the
-               originating event.  Without an id the docs view would fall
-               back to showing all documents for the component, which can
-               include uploads from subsequent production events.  Stop event
-               propagation to avoid unintended row toggling if this markup
-               is reused inside a collapsible context. #}
-            {% if ev.docs and ev.docs|length > 0 %}
-              <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
-                 class="btn ghost small"
-                 style="margin-right:4px; margin-top:0; margin-bottom:4px;"
-                 onclick="event.stopPropagation(); event.preventDefault(); window.location.href=this.href;">
-                Docs
-              </a>
+              <span class="cell-text">{{ ev.timestamp.strftime('%d/%m/%Y') }}</span>
+              <span class="muted">{{ ev.timestamp.strftime('%H:%M') }}</span>
             {% else %}
-              <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+              <span class="cell-text">—</span>
             {% endif %}
+          </div>
+          <div class="archive-cell" data-title="DataMatrix">
+            <span class="dm-preview" data-code="{{ ev.datamatrix | e }}"></span>
+            {% if ev.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ ev.datamatrix }}</span>{% endif %}
+          </div>
+          <div class="archive-cell" data-title="Nome">
+            <span class="cell-text">{{ ev.name }}</span>
+          </div>
+          <div class="archive-cell" data-title="Descrizione">
+            <span class="cell-text" title="{{ ev.description if ev.description else '' }}">{{ ev.description if ev.description else '—' }}</span>
+          </div>
+          <div class="archive-cell" data-title="Rev.">
+            <span class="cell-text">{{ ev.revision if ev.revision else '—' }}</span>
+          </div>
+          <div class="archive-cell" data-title="Utente">
+            <span class="cell-text">{{ ev.user if ev.user else '—' }}</span>
+          </div>
+          <div class="archive-cell" data-title="Documenti">
+            <div class="archive-docs">
+              {% if ev.docs and ev.docs|length > 0 %}
+                <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
+                   class="btn ghost small"
+                   onclick="event.stopPropagation();">Docs</a>
+              {% else %}
+                <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
+              {% endif %}
+            </div>
           </div>
         </div>
       {% endfor %}
     </div>
   {% endif %}
-  <script>
-  // Filter archive rows based on search input.  Matches against all
-  // visible text in the row including name, description and DataMatrix.
-  document.addEventListener('DOMContentLoaded', function() {
-    var input = document.getElementById('archive-search');
-    if (!input) return;
-    input.addEventListener('input', function() {
-      var query = this.value.toLowerCase().trim();
-      var rows = document.querySelectorAll('#archive-body .archive-row');
-      rows.forEach(function(row) {
-        var text = row.textContent.toLowerCase();
-        row.style.display = (query === '' || text.includes(query)) ? '' : 'none';
-      });
-    });
-  });
-  </script>
 
-  {# Load the DataMatrix rendering library and draw codes for each row.
-     Use a separate script tag so that the library is loaded before
-     generating the SVGs.  When the library fails to load, the
-     dm-container retains its text content. #}
   <script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
   <script>
-  document.addEventListener('DOMContentLoaded', function(){
-    try {
-      const containers = document.querySelectorAll('.dm-container');
-      containers.forEach(function(el){
-        const code = el.getAttribute('data-code');
-        if (!code) return;
-        try {
-          // Generate an SVG with a white background and append it to the container
-          const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-          el.innerHTML = '';
-          el.appendChild(svg);
-        } catch (err) {
-          // Fallback: display the code as plain text
-          el.textContent = code;
-        }
-      });
-    } catch (err) {
-      // If the library is unavailable, leave containers unchanged
-    }
-  });
-  </script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const searchInput = document.getElementById('product-archive-search');
+      const list = document.getElementById('product-archive-list');
+      if (searchInput && list) {
+        const rows = () => list.querySelectorAll('[data-archive-row]');
+        searchInput.addEventListener('input', function () {
+          const query = this.value.toLowerCase().trim();
+          rows().forEach((row) => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = (!query || text.includes(query)) ? '' : 'none';
+          });
+        });
+      }
 
+      const dmContainers = document.querySelectorAll('#product-archive-list .dm-preview[data-code]');
+      const canRenderDM = typeof window.DATAMatrix === 'function';
+      dmContainers.forEach((el) => {
+        const code = el.getAttribute('data-code');
+        if (!code) {
+          return;
+        }
+        if (canRenderDM) {
+          try {
+            const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
+            el.innerHTML = '';
+            el.appendChild(svg);
+            return;
+          } catch (err) {
+            // fall through to plain-text rendering
+          }
+        }
+        el.textContent = code;
+      });
+    });
+  </script>
 </section>
 {% endblock %}

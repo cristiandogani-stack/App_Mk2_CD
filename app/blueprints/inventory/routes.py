@@ -785,7 +785,11 @@ def _collect_root_assemblies() -> List[Structure]:
 # determine how many complete products can be produced from the current
 # inventory, we compute the ratio of on‑hand quantity to the required
 # quantity for each component and take the minimum across all components.
-def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] | None = None) -> int:
+def _calculate_product_stock(
+    product: Product,
+    reserved_counts: dict[int, int] | None = None,
+    reserved_structures: dict[int, int] | None = None,
+) -> int:
     """Return the maximum number of complete products that can be built from stock.
 
     This helper considers only the immediate structures associated with a
@@ -800,6 +804,8 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
     has no defined components the function returns 0.
 
     :param product: The Product instance to evaluate.
+    :param reserved_counts: Mapping of Product.id to reserved units in open boxes.
+    :param reserved_structures: Mapping of Structure.id to reserved units for assemblies.
     :return: The integer number of complete products that can be built.
     """
     # Fetch all component associations for this product
@@ -810,6 +816,11 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
         comps = []
     if not comps:
         return 0
+    if reserved_structures is None:
+        try:
+            reserved_structures = _calculate_reserved_assemblies()
+        except Exception:
+            reserved_structures = {}
     # Build a mapping of structure_id to the component association
     comp_map: dict[int, ProductComponent] = {comp.structure_id: comp for comp in comps}
     ratios: list[float] = []
@@ -831,6 +842,18 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
             on_hand = struct.quantity_in_stock or 0
         except Exception:
             on_hand = 0
+        if struct.flag_assembly:
+            try:
+                reserved_for_struct = int(reserved_structures.get(struct.id, 0)) if reserved_structures else 0
+            except Exception:
+                reserved_for_struct = 0
+            try:
+                on_hand = int(on_hand)
+            except Exception:
+                on_hand = 0
+            on_hand -= reserved_for_struct
+            if on_hand < 0:
+                on_hand = 0
         # Required quantity for this component defaults to 1 when undefined
         try:
             required_qty = comp.quantity or 1
@@ -925,9 +948,13 @@ def index():
         reserved_products = _calculate_reserved_products()
     except Exception:
         reserved_products = {}
+    try:
+        reserved_structures = _calculate_reserved_assemblies()
+    except Exception:
+        reserved_structures = {}
     product_cards: list[dict[str, object]] = []
     for product in products:
-        qty_complete = _calculate_product_stock(product, reserved_products)
+        qty_complete = _calculate_product_stock(product, reserved_products, reserved_structures)
         try:
             stock_on_hand = int(product.quantity_in_stock or 0)
         except Exception:
@@ -968,6 +995,10 @@ def list_products():
         reserved_products = _calculate_reserved_products()
     except Exception:
         reserved_products = {}
+    try:
+        reserved_structures = _calculate_reserved_assemblies()
+    except Exception:
+        reserved_structures = {}
     product_trees: list[dict[str, object]] = []
     for product in products:
         # Load all components associated with this product.  Each
@@ -1060,7 +1091,7 @@ def list_products():
         # stock levels of the underlying structures.  When a product has
         # no components or an error occurs the value defaults to zero.
         try:
-            buildable_qty = _calculate_product_stock(product, reserved_products)
+            buildable_qty = _calculate_product_stock(product, reserved_products, reserved_structures)
         except Exception:
             buildable_qty = 0
         product_trees.append({'product': product, 'rows_tree': rows_tree, 'buildable_qty': buildable_qty})
@@ -9908,7 +9939,11 @@ def production_box_view(box_id: int):
             except Exception:
                 reserved_products = {}
             try:
-                available_to_build = _calculate_product_stock(product_obj, reserved_products)
+                reserved_structures = _calculate_reserved_assemblies()
+            except Exception:
+                reserved_structures = {}
+            try:
+                available_to_build = _calculate_product_stock(product_obj, reserved_products, reserved_structures)
             except Exception:
                 available_to_build = 0
         elif root_structure:

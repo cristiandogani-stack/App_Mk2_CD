@@ -955,23 +955,29 @@ def index():
     product_cards: list[dict[str, object]] = []
     for product in products:
         qty_complete = _calculate_product_stock(product, reserved_products, reserved_structures)
-        stock_on_hand: int | None = None
+        stock_on_hand: int = 0
         try:
             stock_query = (
-                db.session.query(func.count(StockItem.id))
+                StockItem.query
+                .join(ProductionBox, StockItem.production_box_id == ProductionBox.id)
                 .filter(StockItem.product_id == product.id)
                 .filter(StockItem.status == 'COMPLETATO')
+                .filter(ProductionBox.box_type == 'PRODOTTO')
             )
             try:
-                stock_query = stock_query.filter(
+                counted = stock_query.filter(
                     func.upper(func.coalesce(StockItem.datamatrix_code, '')).like('%T=PRODOTTO%')
-                )
+                ).count()
+                stock_on_hand = int(counted or 0)
             except Exception:
-                # When the database backend does not support ``coalesce``/``upper``
-                # fall back to counting all completed stock items for the product.
-                pass
-            counted = stock_query.scalar()
-            stock_on_hand = int(counted or 0)
+                # When the database backend lacks support for SQL functions such as
+                # ``coalesce``/``upper``, evaluate the filter in Python to ensure we
+                # still count only DataMatrix codes explicitly marked as products.
+                items = stock_query.all()
+                stock_on_hand = sum(
+                    1 for item in items
+                    if 'T=PRODOTTO' in (item.datamatrix_code or '').upper()
+                )
         except Exception:
             stock_on_hand = None
         if stock_on_hand in (None, 0):

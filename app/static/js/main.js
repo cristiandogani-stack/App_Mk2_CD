@@ -305,7 +305,9 @@ document.addEventListener('DOMContentLoaded', function(){
       : true;
     const itemSelected = inlineLoadLotMode ? true : Boolean(inlineItemInput && inlineItemInput.value);
     if (inlineLoadStatus) {
-      inlineLoadStatus.textContent = docsOk ? '🟢 Documenti pronti' : '🔴 Documenti mancanti';
+      inlineLoadStatus.textContent = docsOk ? 'Documenti pronti' : 'Documenti mancanti';
+      inlineLoadStatus.classList.toggle('is-ready', docsOk);
+      inlineLoadStatus.classList.toggle('is-pending', !docsOk);
     }
     if (inlineLoadSubmit) {
       inlineLoadSubmit.disabled = !docsOk || !itemSelected;

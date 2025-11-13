@@ -1876,19 +1876,30 @@ html[data-theme='dark'] .load-inline-form{
   background:rgba(17,25,40,0.5);
 }
 
-.load-status-pill{
-  font-weight:600;
+.load-status-note{
+  font-weight:500;
   font-size:14px;
   display:inline-flex;
   align-items:center;
-  gap:8px;
-  padding:4px 10px;
-  border-radius:999px;
-  background:rgba(0,0,0,0.05);
+  gap:6px;
+  padding:2px 0;
+  color:var(--text-muted);
 }
 
-html[data-theme='dark'] .load-status-pill{
-  background:rgba(255,255,255,0.08);
+.load-status-note.is-ready{
+  color:#166534;
+}
+
+.load-status-note.is-pending{
+  color:#b91c1c;
+}
+
+html[data-theme='dark'] .load-status-note.is-ready{
+  color:#4ade80;
+}
+
+html[data-theme='dark'] .load-status-note.is-pending{
+  color:#f87171;
 }
 
 .inline-load-docs{

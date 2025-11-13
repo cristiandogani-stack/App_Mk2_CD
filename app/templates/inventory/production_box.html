@@ -30,6 +30,15 @@
 {% set total_items = box.stock_items|length %}
 {% set loaded_items = box.stock_items|selectattr('status', 'equalto', 'COMPLETATO')|list|length %}
 {% set pending_items = total_items - loaded_items %}
+{% set docs_pending = (box.load_doc_defs and box.load_docs_required) or False %}
+{% set waiting_state = (not is_completed) and (pending_items > 0 or docs_pending) %}
+{% if is_completed %}
+  {% set indicator_copy = '🟢 Completato' %}
+{% elif waiting_state %}
+  {% set indicator_copy = '🔴 In attesa' %}
+{% else %}
+  {% set indicator_copy = '🟢 Pronto' %}
+{% endif %}
 {% if is_completed %}
 {%   set visible_items = box.stock_items %}
 {% else %}
@@ -67,7 +76,7 @@
         </div>
       </div>
       <div class="workflow-hero-actions">
-        <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
+        <span class="workflow-indicator">{{ indicator_copy }}</span>
         <div class="workflow-hero-buttons">
           <a href="{{ origin_url }}" class="btn ghost small back-link" data-back-link>Esci</a>
         </div>
@@ -103,7 +112,11 @@
           <input type="hidden" name="quantity" value="1">
           <div class="workflow-block-header">
             <h4>Caricamento documenti</h4>
-            <div class="load-status-pill" data-load-status>{{ '🟢 Documenti pronti' if not box.load_docs_required else '🔴 Documenti mancanti' }}</div>
+            {% if box.load_doc_defs %}
+              <div class="load-status-note{% if box.load_docs_required %} is-pending{% else %} is-ready{% endif %}" data-load-status>
+                {{ 'Documenti mancanti' if box.load_docs_required else 'Documenti pronti' }}
+              </div>
+            {% endif %}
           </div>
           <p class="muted" data-selection-helper>
             {% if box.lot_management %}

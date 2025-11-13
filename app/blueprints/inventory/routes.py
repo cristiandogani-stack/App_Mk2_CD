@@ -21,9 +21,10 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+from sqlalchemy import func
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
-from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document
+from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
 # Import ComponentMaster for resolving human friendly names in event-specific
 # document view.  Without this import the product_event_docs_view would
 # raise a NameError when attempting to query ComponentMaster.  The import
@@ -9853,6 +9854,111 @@ def production_box_view(box_id: int):
     setattr(box, 'assembly_id', assembly_id)
     setattr(box, 'root_structure', root_structure)
     setattr(box, 'root_image_filename', root_image_filename)
+
+    # ------------------------------------------------------------------
+    # Stock summary and build availability metrics
+    #
+    # Display quick indicators for operators showing how many units are
+    # already in stock and how many can still be built when accounting for
+    # existing reservations.  For finished products we leverage
+    # ``_calculate_product_stock`` (passing the reserved product mapping)
+    # to remove units tied up in open boxes.  For assemblies we reuse the
+    # recursive helpers to compute the maximum buildable quantity and then
+    # subtract reservations obtained via ``_calculate_reserved_assemblies``.
+    # When the box represents neither a product nor an assembly (e.g. a
+    # standalone component) the metrics remain undefined.
+
+    def _built_quantity_for_product(prod: Product | None) -> int:
+        """Return the total number of units assembled for ``prod``.
+
+        The count is derived from the storico produzione (``ProductBuild``)
+        records to reflect how many units have actually been built over time.
+        When the aggregation query fails, fall back to summing the retrieved
+        rows in Python so that the UI still surfaces a meaningful number.
+        """
+
+        if not prod:
+            return 0
+        try:
+            total = (db.session.query(func.coalesce(func.sum(ProductBuild.qty), 0))
+                     .filter(ProductBuild.product_id == prod.id)
+                     .scalar())
+            return int(total or 0)
+        except Exception:
+            try:
+                builds = ProductBuild.query.filter_by(product_id=prod.id).all()
+            except Exception:
+                return 0
+            total = 0
+            for build in builds:
+                try:
+                    total += int(getattr(build, 'qty', 0) or 0)
+                except Exception:
+                    continue
+            return total
+
+    stock_qty: int | None = None
+    available_to_build: int | None = None
+    try:
+        product_obj = getattr(box, 'product', None)
+        if product_obj:
+            stock_qty = _built_quantity_for_product(product_obj)
+            try:
+                reserved_products = _calculate_reserved_products()
+            except Exception:
+                reserved_products = {}
+            try:
+                available_to_build = _calculate_product_stock(product_obj, reserved_products)
+            except Exception:
+                available_to_build = 0
+        elif root_structure:
+            if getattr(root_structure, 'flag_assembly', False):
+                assembly_product = None
+                try:
+                    assembly_product = Product.query.filter_by(name=root_structure.name).first()
+                    if not assembly_product:
+                        comp_ref = ProductComponent.query.filter_by(structure_id=root_structure.id).first()
+                        if comp_ref:
+                            assembly_product = Product.query.get(comp_ref.product_id)
+                except Exception:
+                    assembly_product = None
+                if assembly_product:
+                    stock_qty = _built_quantity_for_product(assembly_product)
+                else:
+                    try:
+                        stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                    except Exception:
+                        stock_qty = 0
+                try:
+                    _assign_complete_qty_recursive(root_structure)
+                except Exception:
+                    pass
+                try:
+                    reserved_map = _calculate_reserved_assemblies()
+                except Exception:
+                    reserved_map = {}
+                try:
+                    complete_qty = int(getattr(root_structure, 'complete_qty', 0) or 0)
+                except Exception:
+                    complete_qty = 0
+                try:
+                    reserved_qty = int(reserved_map.get(root_structure.id, 0))
+                except Exception:
+                    reserved_qty = 0
+                avail_val = complete_qty - reserved_qty
+                if avail_val < 0:
+                    avail_val = 0
+                available_to_build = avail_val
+            else:
+                try:
+                    stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                except Exception:
+                    stock_qty = 0
+    except Exception:
+        stock_qty = stock_qty if stock_qty is not None else None
+        available_to_build = available_to_build if available_to_build is not None else None
+    setattr(box, 'stock_qty', stock_qty)
+    setattr(box, 'available_to_build', available_to_build)
     # Pass the root structure name directly to the template for convenience.
     # Determine any document checklist entries for this box's root structure.
     # When the warehouse operator opens the box for a part or commercial

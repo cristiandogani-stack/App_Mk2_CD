@@ -4914,7 +4914,7 @@ def product_archive_view(product_id: int):
         # assemblies so that components used in subassemblies are also
         # excluded from the standalone component archive.
         #-----------------------------------------------------------------
-        consumed_codes: set[str] = set()
+        consumed_counts: dict[str, int] = {}
         visited_assemblies: set[str] = set()
         def _gather_children(parent_code: str) -> None:
             """Recursively collect DataMatrix codes of stock items whose
@@ -4938,24 +4938,53 @@ def product_archive_view(product_id: int):
                 if not child or not child.datamatrix_code:
                     continue
                 c_code = child.datamatrix_code
-                consumed_codes.add(c_code)
+                try:
+                    consumed_counts[c_code] = consumed_counts.get(c_code, 0) + 1
+                except Exception:
+                    consumed_counts[c_code] = 1
                 # If the child is itself an assembly, recurse
                 if 'T=ASSIEME' in c_code.upper():
                     _gather_children(c_code)
         # Initiate recursion from all known assembly codes
         for asm_code in assembly_codes:
             _gather_children(asm_code)
-        # Filter events_data: exclude events whose datamatrix belongs to a
-        # consumed component.  This ensures components used in assembly
-        # builds are shown only in the assemblies archive and not in the
-        # standalone component archive.
-        filtered_events: list[dict[str, Any]] = []
-        for ev in events_data:
-            dm_code = ev.get('datamatrix') or ''
-            if dm_code in consumed_codes:
-                continue
-            filtered_events.append(ev)
-        events_data = filtered_events
+        # Filter events_data: exclude the same number of events per
+        # DataMatrix code as components consumed in assemblies.  For
+        # lot-managed components multiple stock items share the same
+        # DataMatrix; removing only the matched count ensures remaining
+        # unassociated items stay visible in the component archive.
+        if consumed_counts:
+            from datetime import datetime as _dt  # local import for ordering
+            events_by_dm: dict[str, list[tuple[int, Any]]] = {}
+            for ev in events_data:
+                dm_code = ev.get('datamatrix') or ''
+                if not dm_code:
+                    continue
+                try:
+                    ev_id = ev.get('id')
+                except Exception:
+                    ev_id = None
+                if ev_id is None:
+                    continue
+                events_by_dm.setdefault(dm_code, []).append((ev_id, ev.get('timestamp')))
+            ids_to_remove: set[int] = set()
+            for dm_code, count in consumed_counts.items():
+                if count <= 0:
+                    continue
+                entries = events_by_dm.get(dm_code)
+                if not entries:
+                    continue
+                try:
+                    entries_sorted = sorted(
+                        entries,
+                        key=lambda item: (item[1] or _dt.min)
+                    )
+                except Exception:
+                    entries_sorted = entries
+                for ev_id, _ in entries_sorted[:count]:
+                    ids_to_remove.add(ev_id)
+            if ids_to_remove:
+                events_data = [ev for ev in events_data if ev.get('id') not in ids_to_remove]
     except Exception:
         # On any error, leave events_data unchanged
         pass

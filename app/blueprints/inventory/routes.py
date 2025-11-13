@@ -21,9 +21,10 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+from sqlalchemy import func
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
-from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document
+from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
 # Import ComponentMaster for resolving human friendly names in event-specific
 # document view.  Without this import the product_event_docs_view would
 # raise a NameError when attempting to query ComponentMaster.  The import
@@ -9866,15 +9867,42 @@ def production_box_view(box_id: int):
     # subtract reservations obtained via ``_calculate_reserved_assemblies``.
     # When the box represents neither a product nor an assembly (e.g. a
     # standalone component) the metrics remain undefined.
+
+    def _built_quantity_for_product(prod: Product | None) -> int:
+        """Return the total number of units assembled for ``prod``.
+
+        The count is derived from the storico produzione (``ProductBuild``)
+        records to reflect how many units have actually been built over time.
+        When the aggregation query fails, fall back to summing the retrieved
+        rows in Python so that the UI still surfaces a meaningful number.
+        """
+
+        if not prod:
+            return 0
+        try:
+            total = (db.session.query(func.coalesce(func.sum(ProductBuild.qty), 0))
+                     .filter(ProductBuild.product_id == prod.id)
+                     .scalar())
+            return int(total or 0)
+        except Exception:
+            try:
+                builds = ProductBuild.query.filter_by(product_id=prod.id).all()
+            except Exception:
+                return 0
+            total = 0
+            for build in builds:
+                try:
+                    total += int(getattr(build, 'qty', 0) or 0)
+                except Exception:
+                    continue
+            return total
+
     stock_qty: int | None = None
     available_to_build: int | None = None
     try:
         product_obj = getattr(box, 'product', None)
         if product_obj:
-            try:
-                stock_qty = int(getattr(product_obj, 'quantity_in_stock', 0) or 0)
-            except Exception:
-                stock_qty = 0
+            stock_qty = _built_quantity_for_product(product_obj)
             try:
                 reserved_products = _calculate_reserved_products()
             except Exception:
@@ -9884,11 +9912,23 @@ def production_box_view(box_id: int):
             except Exception:
                 available_to_build = 0
         elif root_structure:
-            try:
-                stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
-            except Exception:
-                stock_qty = 0
             if getattr(root_structure, 'flag_assembly', False):
+                assembly_product = None
+                try:
+                    assembly_product = Product.query.filter_by(name=root_structure.name).first()
+                    if not assembly_product:
+                        comp_ref = ProductComponent.query.filter_by(structure_id=root_structure.id).first()
+                        if comp_ref:
+                            assembly_product = Product.query.get(comp_ref.product_id)
+                except Exception:
+                    assembly_product = None
+                if assembly_product:
+                    stock_qty = _built_quantity_for_product(assembly_product)
+                else:
+                    try:
+                        stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                    except Exception:
+                        stock_qty = 0
                 try:
                     _assign_complete_qty_recursive(root_structure)
                 except Exception:
@@ -9909,6 +9949,11 @@ def production_box_view(box_id: int):
                 if avail_val < 0:
                     avail_val = 0
                 available_to_build = avail_val
+            else:
+                try:
+                    stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                except Exception:
+                    stock_qty = 0
     except Exception:
         stock_qty = stock_qty if stock_qty is not None else None
         available_to_build = available_to_build if available_to_build is not None else None

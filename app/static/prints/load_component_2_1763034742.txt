@@ -1,0 +1,5 @@
+Componente: comp1 (ID: 2)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Modulo certificazione qualità (Uninstall.exe)
+ - Certificato 3.1 materiale (readme.txt)

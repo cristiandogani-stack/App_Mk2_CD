@@ -93,16 +93,18 @@
                 <td data-title="Rev.">{{ ev.revision if ev.revision else '—' }}</td>
                 <td data-title="Utente">{{ ev.user if ev.user else '—' }}</td>
                 <td data-title="Documenti" class="docs-cell">
-                  {% if ev.datamatrix %}
-                    {% set has_docs = ev.docs and ev.docs|length > 0 %}
-                    <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
-                       class="btn ghost small"
-                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                       onclick="event.stopPropagation();">Docs</a>
-                  {% else %}
-                    <span class="btn ghost small disabled" title="Codice DataMatrix non disponibile" onclick="event.stopPropagation();">Docs</span>
-                  {% endif %}
+                  <span class="docs-cell__inner">
+                    {% if ev.datamatrix %}
+                      {% set has_docs = ev.docs and ev.docs|length > 0 %}
+                      <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
+                         class="btn ghost small"
+                         data-empty-docs="{{ 'false' if has_docs else 'true' }}"
+                         title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
+                         onclick="event.stopPropagation();">Docs</a>
+                    {% else %}
+                      <span class="btn ghost small disabled" title="Codice DataMatrix non disponibile" onclick="event.stopPropagation();">Docs</span>
+                    {% endif %}
+                  </span>
                 </td>
               </tr>
             {% endfor %}

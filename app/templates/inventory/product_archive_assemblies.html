@@ -90,17 +90,19 @@
                 <span class="summary-cell" data-label="Rev.">{{ comp.revision if comp.revision else '—' }}</span>
                 <span class="summary-cell" data-label="Utente">{{ comp.user if comp.user else '—' }}</span>
                 <span class="summary-cell docs-cell" data-label="Docs">
-                  {% if comp.datamatrix %}
-                    {% set docs_list = comp.docs | default([], true) %}
-                    {% set has_docs = docs_list|length > 0 %}
-                    <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
-                       class="btn ghost small"
-                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                       onclick="event.stopPropagation();">Docs</a>
-                  {% else %}
-                    <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
-                  {% endif %}
+                  <span class="docs-cell__inner">
+                    {% if comp.datamatrix %}
+                      {% set docs_list = comp.docs | default([], true) %}
+                      {% set has_docs = docs_list|length > 0 %}
+                      <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
+                         class="btn ghost small"
+                         data-empty-docs="{{ 'false' if has_docs else 'true' }}"
+                         title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
+                         onclick="event.stopPropagation();">Docs</a>
+                    {% else %}
+                      <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                    {% endif %}
+                  </span>
                 </span>
               </summary>
               <div class="accordion-body" style="--depth: {{ depth + 1 }};">
@@ -134,17 +136,19 @@
               <span class="summary-cell" data-label="Rev.">{{ comp.revision if comp.revision else '—' }}</span>
               <span class="summary-cell" data-label="Utente">{{ comp.user if comp.user else '—' }}</span>
               <span class="summary-cell docs-cell" data-label="Docs">
-                {% if comp.datamatrix %}
-                  {% set docs_list = comp.docs | default([], true) %}
-                  {% set has_docs = docs_list|length > 0 %}
-                  <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
-                     class="btn ghost small"
-                     data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                     title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                     onclick="event.stopPropagation();">Docs</a>
-                {% else %}
-                  <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
-                {% endif %}
+                <span class="docs-cell__inner">
+                  {% if comp.datamatrix %}
+                    {% set docs_list = comp.docs | default([], true) %}
+                    {% set has_docs = docs_list|length > 0 %}
+                    <a href="{{ url_for('inventory.product_docs_view', product_id=product.id, code=comp.datamatrix, src='assemblies') }}"
+                       class="btn ghost small"
+                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
+                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
+                       onclick="event.stopPropagation();">Docs</a>
+                  {% else %}
+                    <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                  {% endif %}
+                </span>
               </span>
             </div>
           {% endif %}

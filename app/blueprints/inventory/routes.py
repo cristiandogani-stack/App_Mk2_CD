@@ -9932,6 +9932,13 @@ def production_box_view(box_id: int):
     available_to_build: int | None = None
     try:
         product_obj = getattr(box, 'product', None)
+        if not product_obj:
+            product_id = getattr(box, 'product_id', None)
+            if product_id:
+                try:
+                    product_obj = Product.query.get(product_id)
+                except Exception:
+                    product_obj = None
         if product_obj:
             stock_qty = _built_quantity_for_product(product_obj)
             try:

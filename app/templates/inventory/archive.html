@@ -84,17 +84,19 @@
                 <span class="summary-cell" data-label="Rev.">{{ node.revision if node.revision else '—' }}</span>
                 <span class="summary-cell" data-label="Utente">{{ node.user if node.user else '—' }}</span>
                 <span class="summary-cell docs-cell" data-label="Docs">
-                  {% if node.product_id and node.datamatrix %}
-                    {% set docs_list = node.docs | default([], true) %}
-                    {% set has_docs = docs_list|length > 0 %}
-                    <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
-                       class="btn ghost small"
-                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                       onclick="event.stopPropagation();">Docs</a>
-                  {% else %}
-                    <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
-                  {% endif %}
+                  <span class="docs-cell__inner">
+                    {% if node.product_id and node.datamatrix %}
+                      {% set docs_list = node.docs | default([], true) %}
+                      {% set has_docs = docs_list|length > 0 %}
+                      <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
+                         class="btn ghost small"
+                         data-empty-docs="{{ 'false' if has_docs else 'true' }}"
+                         title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
+                         onclick="event.stopPropagation();">Docs</a>
+                    {% else %}
+                      <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                    {% endif %}
+                  </span>
                 </span>
               </summary>
               <div class="accordion-body" style="--depth: {{ depth + 1 }};">
@@ -128,17 +130,19 @@
               <span class="summary-cell" data-label="Rev.">{{ node.revision if node.revision else '—' }}</span>
               <span class="summary-cell" data-label="Utente">{{ node.user if node.user else '—' }}</span>
               <span class="summary-cell docs-cell" data-label="Docs">
-                {% if node.product_id and node.datamatrix %}
-                  {% set docs_list = node.docs | default([], true) %}
-                  {% set has_docs = docs_list|length > 0 %}
-                  <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
-                     class="btn ghost small"
-                     data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                     title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                     onclick="event.stopPropagation();">Docs</a>
-                {% else %}
-                  <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
-                {% endif %}
+                <span class="docs-cell__inner">
+                  {% if node.product_id and node.datamatrix %}
+                    {% set docs_list = node.docs | default([], true) %}
+                    {% set has_docs = docs_list|length > 0 %}
+                    <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
+                       class="btn ghost small"
+                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
+                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
+                       onclick="event.stopPropagation();">Docs</a>
+                  {% else %}
+                    <span class="btn ghost small disabled" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                  {% endif %}
+                </span>
               </span>
             </div>
           {% endif %}

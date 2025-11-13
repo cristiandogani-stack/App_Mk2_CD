@@ -97,10 +97,23 @@ document.addEventListener('DOMContentLoaded', function(){
 
   const loadModal = document.getElementById('loadModal');
   const loadFrame = document.getElementById('loadFrame');
+  const buildModal = document.getElementById('buildModal');
+  const buildFrame = document.getElementById('buildFrame');
   const boxId = productionSection.getAttribute('data-box-id') || '';
   const sectionLoadBase = productionSection.getAttribute('data-load-base') || '';
   const modalLoadBase = loadModal ? (loadModal.getAttribute('data-base-url') || '') : '';
   const defaultLoadUrl = modalLoadBase || sectionLoadBase;
+
+  function setModalLoading(modal, isLoading){
+    if (!modal) { return; }
+    if (isLoading) {
+      modal.classList.add('is-loading');
+      modal.setAttribute('aria-busy', 'true');
+    } else {
+      modal.classList.remove('is-loading');
+      modal.setAttribute('aria-busy', 'false');
+    }
+  }
 
   function resetLoadModal(){
     if (loadFrame) {
@@ -108,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function(){
       loadFrame.src = '';
     }
     if (loadModal) {
+      setModalLoading(loadModal, false);
       loadModal.style.display = 'none';
       loadModal.setAttribute('aria-hidden', 'true');
     }
@@ -118,6 +132,7 @@ document.addEventListener('DOMContentLoaded', function(){
       return;
     }
     loadFrame.onload = function(){
+      setModalLoading(loadModal, false);
       try {
         const loc = loadFrame.contentWindow.location;
         const href = loc && loc.href ? loc.href : '';
@@ -179,6 +194,7 @@ document.addEventListener('DOMContentLoaded', function(){
       return;
     }
     attachLoadWatcher();
+    setModalLoading(loadModal, true);
     loadFrame.src = targetUrl;
     loadModal.style.display = 'flex';
     loadModal.setAttribute('aria-hidden', 'false');
@@ -206,16 +222,18 @@ document.addEventListener('DOMContentLoaded', function(){
         alert('Impossibile avviare la costruzione per questo box.');
         return;
       }
-      const modal = document.getElementById('buildModal');
-      const iframe = document.getElementById('buildFrame');
+      const modal = buildModal;
+      const iframe = buildFrame;
       if (!modal || !iframe) {
         window.location.href = buildUrl;
         return;
       }
+      setModalLoading(modal, true);
       iframe.src = buildUrl;
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
       iframe.onload = function(){
+        setModalLoading(modal, false);
         try {
           const loc = iframe.contentWindow.location;
           const href = loc && loc.href ? loc.href : '';
@@ -239,13 +257,14 @@ document.addEventListener('DOMContentLoaded', function(){
   const btnCloseBuild = document.getElementById('btn-close-build');
   if (btnCloseBuild) {
     btnCloseBuild.addEventListener('click', function(){
-      const modal = document.getElementById('buildModal');
-      const iframe = document.getElementById('buildFrame');
+      const modal = buildModal;
+      const iframe = buildFrame;
       if (iframe) {
         iframe.onload = null;
         iframe.src = '';
       }
       if (modal) {
+        setModalLoading(modal, false);
         modal.style.display = 'none';
         modal.setAttribute('aria-hidden', 'true');
       }
@@ -288,6 +307,78 @@ document.addEventListener('DOMContentLoaded', function(){
     return new Blob([buffer], { type: 'image/png' });
   }
 
+  function svgToPngDataUrl(svgElement, size){
+    return new Promise((resolve, reject) => {
+      try {
+        const svgString = new XMLSerializer().serializeToString(svgElement);
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        const canvas = document.createElement('canvas');
+        const dimension = size || Math.max(svgElement.clientWidth, svgElement.clientHeight, 240);
+        canvas.width = dimension;
+        canvas.height = dimension;
+        img.onload = function(){
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            URL.revokeObjectURL(url);
+            reject(new Error('Contesto canvas non disponibile'));
+            return;
+          }
+          ctx.clearRect(0, 0, dimension, dimension);
+          ctx.drawImage(img, 0, 0, dimension, dimension);
+          URL.revokeObjectURL(url);
+          try {
+            resolve(canvas.toDataURL('image/png'));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = function(err){
+          URL.revokeObjectURL(url);
+          reject(err);
+        };
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function renderDataMatrix(){
+    const containers = document.querySelectorAll('.dm-container[data-dm-code]');
+    if (!containers || containers.length === 0) {
+      return;
+    }
+    containers.forEach((container) => {
+      const code = container.getAttribute('data-dm-code') || '';
+      const trimmed = code.trim();
+      if (!trimmed) {
+        return;
+      }
+      if (typeof window !== 'undefined' && typeof window.DATAMatrix === 'function') {
+        try {
+          const svg = window.DATAMatrix({ msg: trimmed, dim: 72, pad: 1, pal: ['#000', '#fff'] });
+          const existing = container.querySelector('svg');
+          if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+          }
+          if (svg) {
+            svg.setAttribute('role', 'img');
+            svg.setAttribute('aria-label', `Datamatrix ${trimmed}`);
+            container.prepend(svg);
+            container.classList.add('is-rendered');
+          }
+        } catch (err) {
+          console.warn('Impossibile generare il DataMatrix in locale', err);
+        }
+      }
+    });
+  }
+
+  renderDataMatrix();
+  window.addEventListener('load', renderDataMatrix, { once: true });
+
   const downloadButtons = document.querySelectorAll('.dm-download');
   if (downloadButtons && downloadButtons.length > 0) {
     downloadButtons.forEach((btn) => {
@@ -298,6 +389,22 @@ document.addEventListener('DOMContentLoaded', function(){
         const safeBase = trimmedName ? trimmedName.replace(/[^a-zA-Z0-9-_]+/g, '_') : 'datamatrix';
         const encoded = btn.getAttribute('data-dm-image') || '';
         const payload = btn.getAttribute('data-dm-code') || '';
+        const row = btn.closest('tr');
+        const container = row ? row.querySelector('.dm-container') : null;
+        const svg = container ? container.querySelector('svg') : null;
+        if (svg) {
+          svgToPngDataUrl(svg, 360).then((dataUrl) => {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = safeBase + '-datamatrix.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }).catch((err) => {
+            console.error('Unable to export generated DataMatrix', err);
+          });
+          return;
+        }
         if (encoded) {
           try {
             const blob = base64ToBlob(encoded);

@@ -163,16 +163,21 @@
                   <tr>
                     <td data-title="#">{{ row.index }}</td>
                     <td data-title="DataMatrix">
-                      <div class="dm-container">
+                      <div class="dm-container"
+                           data-dm-code="{{ (item.datamatrix_payload or '') | e }}">
                         {% if item.datamatrix_image %}
                           <img src="data:image/png;base64,{{ item.datamatrix_image }}"
                                alt="Datamatrix {{ item.product.code or item.product.name }}"
                                loading="lazy"
-                               data-dm-code="{{ item.datamatrix_payload | e }}">
-                        {% elif item.datamatrix_payload %}
-                          <span class="dm-fallback" title="{{ item.datamatrix_payload }}">{{ item.datamatrix_payload }}</span>
-                        {% else %}
-                          <span class="dm-fallback muted">—</span>
+                               class="dm-image dm-image-fallback"
+                               data-dm-image="{{ item.datamatrix_image }}">
+                        {% endif %}
+                        {% if not item.datamatrix_image %}
+                          {% if item.datamatrix_payload %}
+                            <span class="dm-fallback" title="{{ item.datamatrix_payload }}">{{ item.datamatrix_payload }}</span>
+                          {% else %}
+                            <span class="dm-fallback muted">—</span>
+                          {% endif %}
                         {% endif %}
                       </div>
                     </td>
@@ -190,8 +195,8 @@
                     <td data-title="Download" class="text-right">
                       <button class="btn small ghost dm-download"
                               type="button"
-                              data-dm-image="{{ item.datamatrix_image }}"
-                              data-dm-code="{{ item.datamatrix_payload | e }}"
+                              data-dm-image="{{ item.datamatrix_image or '' }}"
+                              data-dm-code="{{ (item.datamatrix_payload or '') | e }}"
                               data-base-name="{{ item.product.code or 'datamatrix' }}">Scarica&nbsp;Datamatrix</button>
                     </td>
                     {% if show_row_actions %}
@@ -214,13 +219,20 @@
 </section>
 
 {% if allow_build %}
-<div id="buildModal" class="workflow-modal" style="display:none;">
+<div id="buildModal" class="workflow-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="buildModalTitle" aria-busy="false">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
-      <h3 class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
+      <div class="workflow-modal-copy">
+        <span class="workflow-modal-eyebrow">Procedura guidata</span>
+        <h3 id="buildModalTitle" class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
+      </div>
       <button id="btn-close-build" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
-    <iframe id="buildFrame" src="" class="workflow-modal-frame"></iframe>
+    <div class="workflow-modal-loader" aria-hidden="true">
+      <div class="workflow-spinner" role="presentation"></div>
+      <p>Caricamento interfaccia…</p>
+    </div>
+    <iframe id="buildFrame" src="" class="workflow-modal-frame" title="Procedura costruzione"></iframe>
   </div>
 </div>
 {% endif %}
@@ -230,15 +242,28 @@
      style="display:none;"
      data-base-url="{{ load_base_url or '' }}"
      data-box-id="{{ box.id }}"
-     aria-hidden="true">
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="loadModalTitle"
+     aria-hidden="true"
+     aria-busy="false">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
-      <h3 class="workflow-modal-title">Carica {{ hero_name }}</h3>
+      <div class="workflow-modal-copy">
+        <span class="workflow-modal-eyebrow">Caricamento documenti</span>
+        <h3 id="loadModalTitle" class="workflow-modal-title">Carica {{ hero_name }}</h3>
+      </div>
       <button id="btn-close-load" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
-    <iframe id="loadFrame" src="" class="workflow-modal-frame"></iframe>
+    <div class="workflow-modal-loader" aria-hidden="true">
+      <div class="workflow-spinner" role="presentation"></div>
+      <p>Caricamento interfaccia…</p>
+    </div>
+    <iframe id="loadFrame" src="" class="workflow-modal-frame" title="Pannello caricamento"></iframe>
   </div>
 </div>
 {% endif %}
 
 {% endblock %}
+
+<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}" defer></script>

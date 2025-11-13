@@ -17,7 +17,7 @@ import base64
 import io
 from threading import RLock
 
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, abort, send_file
+from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, abort, send_file, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -2593,6 +2593,13 @@ def build_assembly(assembly_id: int):
         # false or no box_id parameter), perform a normal redirect.
         try:
             box_id_val = request.args.get('box_id')
+            if fragment_mode:
+                payload = {'status': 'success'}
+                if back_url:
+                    payload['redirect'] = back_url
+                if box_id_val:
+                    payload['box_id'] = box_id_val
+                return jsonify(payload)
             if box_id_val and embedded_flag:
                 # Render a minimal success page for embedded builds
                 return render_template(
@@ -9377,6 +9384,13 @@ def build_product(product_id: int) -> Any:
         # If initiated from a production box modal, return a success page
         # instead of performing a redirect.  The template will trigger
         # closure of the modal and refresh the parent page.
+        if fragment_mode:
+            payload = {'status': 'success'}
+            if back_url:
+                payload['redirect'] = back_url
+            if box_id_param:
+                payload['box_id'] = box_id_param
+            return jsonify(payload)
         if box_id_param and embedded_flag:
             return render_template(
                 'inventory/build_product_success.html',

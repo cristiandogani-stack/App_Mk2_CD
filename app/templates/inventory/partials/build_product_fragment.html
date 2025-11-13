@@ -16,15 +16,28 @@
         return;
       }
       setTimeout(function(){
-        if (window.parent && window.parent !== window) {
-          try {
-            if (typeof window.parent.handleEmbeddedBuildComplete === 'function') {
-              window.parent.handleEmbeddedBuildComplete('success');
-            } else {
-              window.parent.location.reload();
+        var notifier = function(){
+          if (typeof window.handleInlineBuildComplete === 'function') {
+            window.handleInlineBuildComplete('success');
+            return true;
+          }
+          return false;
+        };
+        if (!notifier()) {
+          if (window.parent && window.parent !== window) {
+            try {
+              if (typeof window.parent.handleInlineBuildComplete === 'function') {
+                window.parent.handleInlineBuildComplete('success');
+              } else if (typeof window.parent.handleEmbeddedBuildComplete === 'function') {
+                window.parent.handleEmbeddedBuildComplete('success');
+              } else {
+                window.parent.location.reload();
+              }
+            } catch (err) {
+              console.error(err);
             }
-          } catch (err) {
-            console.error(err);
+          } else {
+            window.location.reload();
           }
         }
       }, 1000);

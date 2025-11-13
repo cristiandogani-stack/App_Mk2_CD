@@ -21,9 +21,10 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+from sqlalchemy import func
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
-from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document
+from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
 # Import ComponentMaster for resolving human friendly names in event-specific
 # document view.  Without this import the product_event_docs_view would
 # raise a NameError when attempting to query ComponentMaster.  The import
@@ -784,7 +785,11 @@ def _collect_root_assemblies() -> List[Structure]:
 # determine how many complete products can be produced from the current
 # inventory, we compute the ratio of on‑hand quantity to the required
 # quantity for each component and take the minimum across all components.
-def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] | None = None) -> int:
+def _calculate_product_stock(
+    product: Product,
+    reserved_counts: dict[int, int] | None = None,
+    reserved_structures: dict[int, int] | None = None,
+) -> int:
     """Return the maximum number of complete products that can be built from stock.
 
     This helper considers only the immediate structures associated with a
@@ -799,6 +804,8 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
     has no defined components the function returns 0.
 
     :param product: The Product instance to evaluate.
+    :param reserved_counts: Mapping of Product.id to reserved units in open boxes.
+    :param reserved_structures: Mapping of Structure.id to reserved units for assemblies.
     :return: The integer number of complete products that can be built.
     """
     # Fetch all component associations for this product
@@ -809,6 +816,11 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
         comps = []
     if not comps:
         return 0
+    if reserved_structures is None:
+        try:
+            reserved_structures = _calculate_reserved_assemblies()
+        except Exception:
+            reserved_structures = {}
     # Build a mapping of structure_id to the component association
     comp_map: dict[int, ProductComponent] = {comp.structure_id: comp for comp in comps}
     ratios: list[float] = []
@@ -830,6 +842,18 @@ def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] |
             on_hand = struct.quantity_in_stock or 0
         except Exception:
             on_hand = 0
+        if struct.flag_assembly:
+            try:
+                reserved_for_struct = int(reserved_structures.get(struct.id, 0)) if reserved_structures else 0
+            except Exception:
+                reserved_for_struct = 0
+            try:
+                on_hand = int(on_hand)
+            except Exception:
+                on_hand = 0
+            on_hand -= reserved_for_struct
+            if on_hand < 0:
+                on_hand = 0
         # Required quantity for this component defaults to 1 when undefined
         try:
             required_qty = comp.quantity or 1
@@ -924,9 +948,13 @@ def index():
         reserved_products = _calculate_reserved_products()
     except Exception:
         reserved_products = {}
+    try:
+        reserved_structures = _calculate_reserved_assemblies()
+    except Exception:
+        reserved_structures = {}
     product_cards: list[dict[str, object]] = []
     for product in products:
-        qty_complete = _calculate_product_stock(product, reserved_products)
+        qty_complete = _calculate_product_stock(product, reserved_products, reserved_structures)
         try:
             stock_on_hand = int(product.quantity_in_stock or 0)
         except Exception:
@@ -967,6 +995,10 @@ def list_products():
         reserved_products = _calculate_reserved_products()
     except Exception:
         reserved_products = {}
+    try:
+        reserved_structures = _calculate_reserved_assemblies()
+    except Exception:
+        reserved_structures = {}
     product_trees: list[dict[str, object]] = []
     for product in products:
         # Load all components associated with this product.  Each
@@ -1059,7 +1091,7 @@ def list_products():
         # stock levels of the underlying structures.  When a product has
         # no components or an error occurs the value defaults to zero.
         try:
-            buildable_qty = _calculate_product_stock(product, reserved_products)
+            buildable_qty = _calculate_product_stock(product, reserved_products, reserved_structures)
         except Exception:
             buildable_qty = 0
         product_trees.append({'product': product, 'rows_tree': rows_tree, 'buildable_qty': buildable_qty})
@@ -9853,6 +9885,115 @@ def production_box_view(box_id: int):
     setattr(box, 'assembly_id', assembly_id)
     setattr(box, 'root_structure', root_structure)
     setattr(box, 'root_image_filename', root_image_filename)
+
+    # ------------------------------------------------------------------
+    # Stock summary and build availability metrics
+    #
+    # Display quick indicators for operators showing how many units are
+    # already in stock and how many can still be built when accounting for
+    # existing reservations.  For finished products we leverage
+    # ``_calculate_product_stock`` (passing the reserved product mapping)
+    # to remove units tied up in open boxes.  For assemblies we reuse the
+    # recursive helpers to compute the maximum buildable quantity and then
+    # subtract reservations obtained via ``_calculate_reserved_assemblies``.
+    # When the box represents neither a product nor an assembly (e.g. a
+    # standalone component) the metrics remain undefined.
+
+    def _built_quantity_for_product(prod: Product | None) -> int:
+        """Return the total number of units assembled for ``prod``.
+
+        The count is derived from the storico produzione (``ProductBuild``)
+        records to reflect how many units have actually been built over time.
+        When the aggregation query fails, fall back to summing the retrieved
+        rows in Python so that the UI still surfaces a meaningful number.
+        """
+
+        if not prod:
+            return 0
+        try:
+            total = (db.session.query(func.coalesce(func.sum(ProductBuild.qty), 0))
+                     .filter(ProductBuild.product_id == prod.id)
+                     .scalar())
+            return int(total or 0)
+        except Exception:
+            try:
+                builds = ProductBuild.query.filter_by(product_id=prod.id).all()
+            except Exception:
+                return 0
+            total = 0
+            for build in builds:
+                try:
+                    total += int(getattr(build, 'qty', 0) or 0)
+                except Exception:
+                    continue
+            return total
+
+    stock_qty: int | None = None
+    available_to_build: int | None = None
+    try:
+        product_obj = getattr(box, 'product', None)
+        if product_obj:
+            stock_qty = _built_quantity_for_product(product_obj)
+            try:
+                reserved_products = _calculate_reserved_products()
+            except Exception:
+                reserved_products = {}
+            try:
+                reserved_structures = _calculate_reserved_assemblies()
+            except Exception:
+                reserved_structures = {}
+            try:
+                available_to_build = _calculate_product_stock(product_obj, reserved_products, reserved_structures)
+            except Exception:
+                available_to_build = 0
+        elif root_structure:
+            if getattr(root_structure, 'flag_assembly', False):
+                assembly_product = None
+                try:
+                    assembly_product = Product.query.filter_by(name=root_structure.name).first()
+                    if not assembly_product:
+                        comp_ref = ProductComponent.query.filter_by(structure_id=root_structure.id).first()
+                        if comp_ref:
+                            assembly_product = Product.query.get(comp_ref.product_id)
+                except Exception:
+                    assembly_product = None
+                if assembly_product:
+                    stock_qty = _built_quantity_for_product(assembly_product)
+                else:
+                    try:
+                        stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                    except Exception:
+                        stock_qty = 0
+                try:
+                    _assign_complete_qty_recursive(root_structure)
+                except Exception:
+                    pass
+                try:
+                    reserved_map = _calculate_reserved_assemblies()
+                except Exception:
+                    reserved_map = {}
+                try:
+                    complete_qty = int(getattr(root_structure, 'complete_qty', 0) or 0)
+                except Exception:
+                    complete_qty = 0
+                try:
+                    reserved_qty = int(reserved_map.get(root_structure.id, 0))
+                except Exception:
+                    reserved_qty = 0
+                avail_val = complete_qty - reserved_qty
+                if avail_val < 0:
+                    avail_val = 0
+                available_to_build = avail_val
+            else:
+                try:
+                    stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                except Exception:
+                    stock_qty = 0
+    except Exception:
+        stock_qty = stock_qty if stock_qty is not None else None
+        available_to_build = available_to_build if available_to_build is not None else None
+    setattr(box, 'stock_qty', stock_qty)
+    setattr(box, 'available_to_build', available_to_build)
     # Pass the root structure name directly to the template for convenience.
     # Determine any document checklist entries for this box's root structure.
     # When the warehouse operator opens the box for a part or commercial

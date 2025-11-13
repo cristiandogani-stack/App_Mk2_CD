@@ -106,18 +106,15 @@
                 <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
                 <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
                 <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
-                <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
-                  {% set doc_product_id = node.product_id | default(None) %}
-                  {% set docs_list = node.docs | default([], true) %}
-                  {% set has_docs = docs_list|length > 0 %}
-                  {% if doc_product_id and node.datamatrix %}
-                    <a href="{{ url_for('inventory.product_docs_view', product_id=doc_product_id, code=node.datamatrix, src='history') }}"
-                       class="btn ghost small"
-                       data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                       title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                       onclick="event.stopPropagation();">Docs</a>
+                <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
+                  {# Placeholder for future document links.  Documents are
+                     currently not linked on the production history view.  Use flex
+                     layout to align the button to the top and stop event
+                     propagation when clicked. #}
+                  {% if node.docs and node.docs|length > 0 %}
+                    <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Documenti disponibili" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
                   {% else %}
-                    <span class="btn ghost small disabled" style="margin-right:4px;" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                    <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
                   {% endif %}
                 </div>
               </div>
@@ -143,18 +140,11 @@
             <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
             <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
             <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
-            <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
-              {% set doc_product_id = node.product_id | default(None) %}
-              {% set docs_list = node.docs | default([], true) %}
-              {% set has_docs = docs_list|length > 0 %}
-              {% if doc_product_id and node.datamatrix %}
-                <a href="{{ url_for('inventory.product_docs_view', product_id=doc_product_id, code=node.datamatrix, src='history') }}"
-                   class="btn ghost small"
-                   data-empty-docs="{{ 'false' if has_docs else 'true' }}"
-                   title="{{ 'Apri documenti' if has_docs else 'Nessun documento caricato – apri per scaricare il DataMatrix' }}"
-                   onclick="event.stopPropagation();">Docs</a>
+            <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
+              {% if node.docs and node.docs|length > 0 %}
+                <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Documenti disponibili" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
               {% else %}
-                <span class="btn ghost small disabled" style="margin-right:4px;" title="Documenti non disponibili" onclick="event.stopPropagation();">Docs</span>
+                <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
               {% endif %}
             </div>
           </div>

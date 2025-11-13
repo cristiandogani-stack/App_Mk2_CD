@@ -304,6 +304,18 @@ document.addEventListener('DOMContentLoaded', function(){
     return finalUrl;
   }
 
+  function navigateDirect(url){
+    if (!url) {
+      return false;
+    }
+    try {
+      window.location.href = url;
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function openLoadModal(trigger, options){
     const targetUrl = resolveLoadUrl(trigger, options);
     if (!loadModal || !loadFrame) {
@@ -316,7 +328,9 @@ document.addEventListener('DOMContentLoaded', function(){
       return;
     }
     if (!targetUrl) {
-      alert('Impossibile aprire il caricamento per questo box.');
+      if (!navigateDirect(defaultLoadUrl)) {
+        alert('Impossibile aprire il caricamento per questo box.');
+      }
       return;
     }
     attachLoadWatcher();

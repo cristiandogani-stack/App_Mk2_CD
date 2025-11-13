@@ -2590,23 +2590,37 @@ input.checklist-toggle:checked::before {
 
 td.docs-cell {
   vertical-align: middle;
+  text-align: center;
 }
 
 td.docs-cell .btn {
-  margin: 0;
+  margin: 0 auto;
+}
+
+.archive-legend span:last-child {
+  text-align: center;
+}
+
+.accordion-summary .summary-cell,
+.archive-leaf-row .summary-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .accordion-summary .docs-cell,
 .archive-leaf-row .docs-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  align-self: stretch;
+  justify-content: center;
 }
 
 .accordion-summary .docs-cell .btn,
 .archive-leaf-row .docs-cell .btn {
-  margin: 0;
+  margin: 0 auto;
+}
+
+.accordion-summary .docs-cell .btn.disabled,
+.archive-leaf-row .docs-cell .btn.disabled {
+  cursor: default;
 }
 
 .btn[data-empty-docs="true"] {
@@ -2681,6 +2695,7 @@ td.docs-cell .btn {
   gap: 8px;
   padding: 0 24px 16px calc(24px + (var(--depth, 0) * 18px));
   background: rgba(255, 255, 255, 0.04);
+  border-top: 1px solid var(--glass-stroke);
 }
 
 .archive-leaf-row {
@@ -2780,6 +2795,7 @@ td.docs-cell .btn {
   .archive-leaf-row .summary-cell {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
   }
 

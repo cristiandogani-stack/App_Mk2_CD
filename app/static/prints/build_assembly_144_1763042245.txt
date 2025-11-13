@@ -1,0 +1,6 @@
+Assemblea: assieme (ID: 144)
+Componenti associati:
+ - comp1 (ID: 145)
+ - comp2 (ID: 146)
+Documenti dell'assieme:
+ - Verifica funzionamento

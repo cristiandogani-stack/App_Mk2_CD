@@ -13,7 +13,17 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
 </head>
-<body>
+{% set _endpoint = request.endpoint or '' %}
+{% set _detected_module = (_endpoint.split('.')|first) %}
+{% if active_module is defined and active_module %}
+  {% set _forced_module = active_module %}
+{% elif g is defined and g.active_module is defined and g.active_module %}
+  {% set _forced_module = g.active_module %}
+{% else %}
+  {% set _forced_module = None %}
+{% endif %}
+{% set _current_module = _forced_module if _forced_module else _detected_module %}
+<body data-module="{{ _current_module or '' }}">
   <div class="bg-aurora"></div>
 
   {# Hide the header when rendering in embedded mode (e.g. inside an iframe).
@@ -43,23 +53,14 @@
         production module when delegating to inventory views) use that value
         to force the highlight.
       #}
-      {% set cur_ep = request.endpoint or '' %}
-      {% set detected_bp = (cur_ep.split('.')|first) %}
-      {% set forced_bp = None %}
-      {% if active_module is defined and active_module %}
-        {% set forced_bp = active_module %}
-      {% elif g is defined and g.active_module is defined and g.active_module %}
-        {% set forced_bp = g.active_module %}
-      {% endif %}
-      {% set cur_bp = forced_bp if forced_bp else detected_bp %}
       {% for m in enabled_modules %}
         {% set mod_bp = (m.endpoint.split('.')|first) %}
-        {% set is_active = (mod_bp == cur_bp) %}
+        {% set is_active = (mod_bp == _current_module) %}
         {# Rename the top‑level "Prodotti" module to "Anagrafiche" when rendering the navigation.  This
            ensures the link label reflects the new terminology without
            modifying the underlying blueprint slug or database record. #}
         {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
-        <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
+        <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}" data-module-target="{{ mod_bp }}">{{ display_name }}</a>
       {% endfor %}
     </nav>
     {# The global search bar has been removed from the header.  Search
@@ -80,21 +81,12 @@
       the "Magazzino" tab highlighted when browsing its internal pages.
       Respect the ``active_module`` override when provided.
     #}
-    {% set cur_ep = request.endpoint or '' %}
-    {% set detected_bp = (cur_ep.split('.')|first) %}
-    {% set forced_bp = None %}
-    {% if active_module is defined and active_module %}
-      {% set forced_bp = active_module %}
-    {% elif g is defined and g.active_module is defined and g.active_module %}
-      {% set forced_bp = g.active_module %}
-    {% endif %}
-    {% set cur_bp = forced_bp if forced_bp else detected_bp %}
     {% for m in enabled_modules %}
       {% set mod_bp = (m.endpoint.split('.')|first) %}
-      {% set is_active = (mod_bp == cur_bp) %}
+      {% set is_active = (mod_bp == _current_module) %}
       {# As on desktop, rename the "Prodotti" module to "Anagrafiche" for the mobile navigation. #}
       {% set display_name = 'Anagrafiche' if (m.slug == 'products' or m.name == 'Prodotti') else m.name %}
-      <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}">{{ display_name }}</a>
+      <a class="nav-link{{ ' active' if is_active else '' }}" href="{{ url_for(m.endpoint) }}" data-module-target="{{ mod_bp }}">{{ display_name }}</a>
     {% endfor %}
     <a class="nav-link" href="{{ url_for('auth.logout') }}">Esci</a>
   </nav>

@@ -9702,4 +9702,19 @@ def production_box_view(box_id: int):
         lot_mgmt_flag = False
     setattr(box, 'lot_management', lot_mgmt_flag)
 
+    # Pre-render a DataMatrix image (PNG encoded in base64) for each stock item so that
+    # the frontend can display and download the code without relying on the fragile
+    # client-side SVG generator.  When generation fails the ``datamatrix_image``
+    # attribute is left as an empty string and the templates fall back to showing the
+    # plain text payload.
+    try:
+        for item in getattr(box, 'stock_items', []) or []:
+            code_val = getattr(item, 'datamatrix_code', '') or ''
+            image_data = _generate_dm_image(code_val)
+            setattr(item, 'datamatrix_image', image_data)
+            setattr(item, 'datamatrix_payload', code_val)
+    except Exception:
+        # Ignore failures and let the template rely on the textual fallback.
+        pass
+
     return render_template('inventory/production_box.html', box=box)

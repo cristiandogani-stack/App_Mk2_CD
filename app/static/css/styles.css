@@ -1942,6 +1942,25 @@ html[data-theme='dark'] .dm-container{
   color:var(--muted);
 }
 
+.dm-container img{
+  display:block;
+  width:60px;
+  height:60px;
+  object-fit:contain;
+}
+
+.dm-fallback{
+  display:inline-block;
+  max-width:120px;
+  font-family:'JetBrains Mono', monospace;
+  font-size:11px;
+  line-height:1.2;
+  text-align:center;
+  word-break:break-word;
+  white-space:normal;
+  color:var(--muted);
+}
+
 .workflow-modal{
   position:fixed;
   inset:0;

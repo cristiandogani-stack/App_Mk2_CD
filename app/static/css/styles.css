@@ -2590,9 +2590,10 @@ input.checklist-toggle:checked::before {
 
 .docs-cell {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
   gap: 6px;
-  align-items: center;
 }
 
 .docs-cell .btn {
@@ -2786,6 +2787,7 @@ input.checklist-toggle:checked::before {
   .archive-leaf-row .docs-cell {
     flex-direction: column;
     align-items: flex-start;
+    justify-content: flex-start;
     gap: 6px;
   }
 }

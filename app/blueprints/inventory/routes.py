@@ -6536,6 +6536,7 @@ def product_archive_assemblies_view(product_id: int):
                     'description': desc_val,
                     'user': user_display,
                     'action': 'COMPONENTE',
+                    'stock_item_id': getattr(si, 'id', None),
                     'docs': docs,
                     'image_data': _generate_dm_image(dm_val),
                 }
@@ -6684,6 +6685,7 @@ def product_archive_assemblies_view(product_id: int):
                     'description': desc_val,
                     'user': user_display,
                     'action': f"COMPONENTE{qty_label}",
+                    'stock_item_id': None,
                     'docs': [],
                     'image_data': _generate_dm_image(dm_val),
                 }
@@ -6823,6 +6825,7 @@ def product_archive_assemblies_view(product_id: int):
                 'description': child_desc,
                 'user': user_display,
                 'action': f"COMPONENTE{qty_label}",
+                'stock_item_id': None,
                 'docs': [],
                 'image_data': _generate_dm_image(child_dm),
             }
@@ -7016,6 +7019,7 @@ def product_archive_assemblies_view(product_id: int):
                 'description': sub_desc,
                 'user': '',
                 'action': 'COMPONENTE',
+                'stock_item_id': None,
                 'docs': sub_docs,
                 'image_data': _generate_dm_image(sub_dm),
             }
@@ -7057,7 +7061,8 @@ def product_archive_assemblies_view(product_id: int):
         for row in rows or []:
             filtered_docs: list[tuple[str, str]] = []
             for name, url in row.get('docs') or []:
-                key = f"{name}|{url or ''}"
+                scope_val = row.get('stock_item_id') or row.get('datamatrix') or ''
+                key = f"{scope_val}|{name}|{url or ''}"
                 if key not in assigned_global_comp_doc_keys:
                     assigned_global_comp_doc_keys.add(key)
                     filtered_docs.append((name, url))

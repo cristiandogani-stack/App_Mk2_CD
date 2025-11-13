@@ -116,7 +116,7 @@
                propagation to avoid unintended row toggling if this markup
                is reused inside a collapsible context. #}
             {% if ev.docs and ev.docs|length > 0 %}
-              <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components') }}"
+              <a href="{{ url_for('inventory.product_event_docs_view', product_id=product.id, code=ev.datamatrix, ev_id=ev.id, src='components', stock_id=ev.stock_item_id) }}"
                  class="btn ghost small"
                  style="margin-right:4px; margin-top:0; margin-bottom:4px;"
                  onclick="event.stopPropagation(); event.preventDefault(); window.location.href=this.href;">

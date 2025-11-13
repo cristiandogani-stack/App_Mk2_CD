@@ -129,6 +129,7 @@
               class="workflow-block load-inline load-inline-form"
               method="post"
               enctype="multipart/form-data"
+              data-lot-mode="{{ 'true' if box.lot_management else 'false' }}"
               action="{{ url_for('inventory.load_component', part_id=box.root_structure.id, box_id=box.id, back_url=url_for('inventory.production_box_view', box_id=box.id)) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="item_id" value="">
@@ -137,7 +138,13 @@
             <h4>Caricamento documenti</h4>
             <div class="load-status-pill" data-load-status>{{ '🟢 Documenti pronti' if not box.load_docs_required else '🔴 Documenti mancanti' }}</div>
           </div>
-          <p class="muted" data-selection-helper>Seleziona un componente dalla tabella per associare i documenti caricati.</p>
+          <p class="muted" data-selection-helper>
+            {% if box.lot_management %}
+              I documenti caricati verranno applicati a tutti i componenti del lotto.
+            {% else %}
+              Seleziona un componente dalla tabella per associare i documenti caricati.
+            {% endif %}
+          </p>
           {% if box.load_doc_defs %}
             <div class="document-section inline-load-docs">
               {% for doc in box.load_doc_defs %}
@@ -158,6 +165,7 @@
                   </div>
                   <div class="document-card-body">
                     <input type="file"
+                           class="file-input-hidden"
                            name="{{ doc.field_name }}"
                            id="loadField_{{ loop.index }}"
                            data-load-input
@@ -172,7 +180,12 @@
             <p class="muted" style="margin:0;">Nessuna documentazione richiesta per questo componente.</p>
           {% endif %}
           <div class="inline-load-footer">
-            <button type="submit" class="btn primary" data-load-submit {% if box.load_docs_required %}disabled{% endif %}>Carica componente</button>
+            <button type="submit"
+                    class="btn primary"
+                    data-load-submit
+                    {% if box.load_docs_required %}disabled{% endif %}>
+              {{ 'Carica componenti' if box.lot_management else 'Carica componente' }}
+            </button>
           </div>
         </form>
       {% endif %}

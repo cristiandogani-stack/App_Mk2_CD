@@ -233,7 +233,7 @@
             return;
           }
         }
-        fetch('{{ url_for('inventory.associate_component') }}', {
+        fetch('{{ url_for('api.associate_component') }}', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

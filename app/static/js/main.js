@@ -206,14 +206,19 @@ document.addEventListener('DOMContentLoaded', function(){
   const inlineSelectionHelper = inlineLoadForm ? inlineLoadForm.querySelector('[data-selection-helper]') : null;
   const inlineItemInput = inlineLoadForm ? inlineLoadForm.querySelector('input[name="item_id"]') : null;
   const inlineFileInputs = inlineLoadForm ? inlineLoadForm.querySelectorAll('[data-load-input]') : [];
+  const inlineLoadLotMode = inlineLoadForm ? (inlineLoadForm.getAttribute('data-lot-mode') === 'true') : false;
   const inlineSelectButtons = document.querySelectorAll('[data-select-item]');
   const tableRows = document.querySelectorAll('.production-box-table tbody tr');
+
+  if (inlineLoadLotMode && inlineItemInput) {
+    inlineItemInput.value = '';
+  }
 
   function updateInlineLoadStatus(){
     const docsOk = inlineFileInputs && inlineFileInputs.length > 0
       ? Array.from(inlineFileInputs).every((inp) => inp.files && inp.files.length > 0)
       : true;
-    const itemSelected = inlineItemInput && inlineItemInput.value;
+    const itemSelected = inlineLoadLotMode ? true : Boolean(inlineItemInput && inlineItemInput.value);
     if (inlineLoadStatus) {
       inlineLoadStatus.textContent = docsOk ? '🟢 Documenti pronti' : '🔴 Documenti mancanti';
     }
@@ -272,6 +277,10 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   function applySelection(itemId, label, sourceBtn){
+    if (inlineLoadLotMode) {
+      updateInlineLoadStatus();
+      return;
+    }
     if (inlineItemInput) {
       inlineItemInput.value = itemId || '';
     }
@@ -289,7 +298,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
-  if (inlineSelectButtons && inlineSelectButtons.length > 0) {
+  if (!inlineLoadLotMode && inlineSelectButtons && inlineSelectButtons.length > 0) {
     inlineSelectButtons.forEach((btn) => {
       btn.addEventListener('click', (evt) => {
         evt.preventDefault();
@@ -300,7 +309,7 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  if (tableRows && tableRows.length > 0) {
+  if (!inlineLoadLotMode && tableRows && tableRows.length > 0) {
     tableRows.forEach((row) => {
       row.addEventListener('click', (evt) => {
         if (evt.target && evt.target.closest('button')) {

@@ -1881,6 +1881,18 @@ html[data-theme='dark'] .load-status-pill{
   gap:12px;
 }
 
+.file-input-hidden{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+
 .production-box-table tr.is-targeted{
   outline:2px solid rgba(59,130,246,0.45);
   outline-offset:2px;

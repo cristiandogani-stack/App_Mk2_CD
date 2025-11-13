@@ -2594,6 +2594,7 @@ input.checklist-toggle:checked::before {
   justify-content: flex-start;
   align-items: center;
   gap: 6px;
+  height: 100%;
 }
 
 .docs-cell .btn {

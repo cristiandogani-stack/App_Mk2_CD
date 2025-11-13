@@ -23,6 +23,7 @@
 {% set allow_load = (not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] and box.lot_management) %}
 {% set show_row_actions = (not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] and not is_completed) %}
 {% set load_base_url = url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else None %}
+{% set origin_url = request.referrer or url_for('production.index') %}
 {% set hero_label = 'Box assieme' if box.box_type == 'ASSIEME' else 'Box prodotto' if box.box_type == 'PRODOTTO' else 'Box commerciale' if box.box_type == 'COMMERCIALE' else 'Box componenti' %}
 {% set hero_name = box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Box ' ~ box.code) %}
 {% set total_items = box.stock_items|length %}
@@ -36,8 +37,17 @@
 
 <section class="section workflow-section production-box-section"
          data-box-id="{{ box.id }}"
-         data-load-base="{{ load_base_url or '' }}">
+         data-load-base="{{ load_base_url or '' }}"
+         data-back-url="{{ origin_url }}">
   <div class="glass workflow-container production-box-container">
+    <div class="build-complete-overlay" data-build-complete-overlay hidden>
+      <div class="build-complete-card">
+        <div class="build-complete-icon" aria-hidden="true">✅</div>
+        <h3 class="build-complete-title" data-build-complete-message>Costruzione completata</h3>
+        <p class="build-complete-copy" data-build-complete-detail>Il box verrà chiuso e aggiornato automaticamente.</p>
+        <button type="button" class="btn primary" data-build-complete-dismiss>Chiudi ora</button>
+      </div>
+    </div>
     <div class="workflow-hero">
       <div class="workflow-hero-main">
         <div class="workflow-thumb production-box-thumb">
@@ -59,8 +69,7 @@
       <div class="workflow-hero-actions">
         <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
         <div class="workflow-hero-buttons">
-          <a href="#" class="btn ghost small back-link"
-             onclick="if (document.referrer) { window.location.href = document.referrer; } else { window.history.back(); } return false;">← Indietro</a>
+          <a href="{{ origin_url }}" class="btn ghost small back-link" data-back-link>← Indietro</a>
         </div>
       </div>
     </div>
@@ -82,13 +91,7 @@
         {% endif %}
       </div>
 
-      <div class="workflow-block">
-        {% set show_checklist_title = box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-        {% if show_checklist_title %}
-          <div class="workflow-block-header">
-            <h4>Documenti checklist</h4>
-          </div>
-        {% endif %}
+      <div class="workflow-block documents-block">
       {% if not (allow_load and box.box_type not in ['ASSIEME', 'PRODOTTO']) %}
         {% if box.required_docs and box.required_docs|length > 0 %}
           <div class="document-section">

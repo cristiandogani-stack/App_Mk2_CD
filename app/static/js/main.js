@@ -100,6 +100,75 @@ document.addEventListener('DOMContentLoaded', function(){
   const buildContainer = buildPanel ? buildPanel.querySelector('[data-build-container]') : null;
   const buildBaseUrl = buildPanel ? buildPanel.getAttribute('data-build-url') : '';
   const buildBoxId = buildPanel ? buildPanel.getAttribute('data-box-id') : '';
+  const buildCompleteOverlay = productionSection.querySelector('[data-build-complete-overlay]');
+  const buildCompleteMessage = buildCompleteOverlay ? buildCompleteOverlay.querySelector('[data-build-complete-message]') : null;
+  const buildCompleteDetail = buildCompleteOverlay ? buildCompleteOverlay.querySelector('[data-build-complete-detail]') : null;
+  const buildCompleteDismiss = buildCompleteOverlay ? buildCompleteOverlay.querySelector('[data-build-complete-dismiss]') : null;
+  const backUrl = productionSection.getAttribute('data-back-url') || '';
+  const backLink = productionSection.querySelector('[data-back-link]');
+  let buildRedirectTimer = null;
+
+  if (backLink) {
+    backLink.addEventListener('click', (evt) => {
+      if (document.referrer) {
+        evt.preventDefault();
+        window.location.href = document.referrer;
+      } else if (window.history.length > 1) {
+        evt.preventDefault();
+        window.history.back();
+      }
+    });
+  }
+
+  function navigateAfterBuild(targetUrl) {
+    const destination = targetUrl || backUrl;
+    if (destination) {
+      window.location.href = destination;
+    } else {
+      window.location.reload();
+    }
+  }
+
+  function showBuildCompletion(status, payload) {
+    const detailText = payload && payload.detail
+      ? payload.detail
+      : 'Aggiorniamo il box e torniamo alla panoramica.';
+    const titleText = payload && payload.message
+      ? payload.message
+      : (status === 'success' ? 'Costruzione completata' : 'Operazione aggiornata');
+    if (buildCompleteOverlay) {
+      buildCompleteOverlay.hidden = false;
+      buildCompleteOverlay.classList.add('is-visible');
+      if (buildCompleteMessage) {
+        buildCompleteMessage.textContent = titleText;
+      }
+      if (buildCompleteDetail) {
+        buildCompleteDetail.textContent = detailText;
+      }
+    }
+    const redirectTarget = payload && payload.redirect ? payload.redirect : backUrl;
+    if (buildRedirectTimer) {
+      window.clearTimeout(buildRedirectTimer);
+    }
+    buildRedirectTimer = window.setTimeout(() => {
+      navigateAfterBuild(redirectTarget);
+    }, 1200);
+    if (buildCompleteDismiss) {
+      const handler = (evt) => {
+        evt.preventDefault();
+        if (buildRedirectTimer) {
+          window.clearTimeout(buildRedirectTimer);
+          buildRedirectTimer = null;
+        }
+        navigateAfterBuild(redirectTarget);
+      };
+      buildCompleteDismiss.addEventListener('click', handler, { once: true });
+    }
+  }
+
+  window.handleInlineBuildComplete = function handleInlineBuildComplete(status, payload) {
+    showBuildCompletion(status || 'success', payload || {});
+  };
 
   function toggleBuildLoading(isLoading){
     if (!buildPanel || !buildLoader) {
@@ -151,16 +220,37 @@ document.addEventListener('DOMContentLoaded', function(){
         body: new FormData(form),
       }).then((resp) => {
         if (resp.redirected) {
-          window.location.reload();
+          window.location.href = resp.url || window.location.href;
           return null;
         }
-        return resp.text();
-      }).then((html) => {
-        if (typeof html === 'string') {
-          buildContainer.innerHTML = html;
-          executeEmbeddedScripts(buildContainer);
-          attachInlineBuildHandlers(buildContainer);
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          return resp.json();
         }
+        return resp.text();
+      }).then((payload) => {
+        if (!payload) {
+          return;
+        }
+        if (typeof payload === 'object' && !(payload instanceof String)) {
+          if (payload.status === 'success') {
+            if (typeof window.handleInlineBuildComplete === 'function') {
+              window.handleInlineBuildComplete('success', payload);
+            } else {
+              navigateAfterBuild(payload.redirect || backUrl);
+            }
+            return;
+          }
+          if (payload.html) {
+            buildContainer.innerHTML = payload.html;
+            executeEmbeddedScripts(buildContainer);
+            attachInlineBuildHandlers(buildContainer);
+          }
+          return;
+        }
+        buildContainer.innerHTML = payload;
+        executeEmbeddedScripts(buildContainer);
+        attachInlineBuildHandlers(buildContainer);
       }).catch(() => {
         // Leave current content intact on error
       }).finally(() => {

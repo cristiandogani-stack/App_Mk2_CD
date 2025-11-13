@@ -1757,6 +1757,8 @@ html[data-theme='dark'] .workflow-block{
 
 .production-box-section .workflow-container{
   min-height:0;
+  position:relative;
+  overflow:hidden;
 }
 
 .production-box-body{
@@ -1764,6 +1766,26 @@ html[data-theme='dark'] .workflow-block{
   flex-direction:column;
   gap:24px;
   padding:24px;
+}
+
+.production-box-body .documents-block{
+  padding:0;
+  border:none;
+  background:transparent;
+}
+
+.production-box-body .documents-block .document-section{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+  gap:16px;
+}
+
+.production-box-body .documents-block .document-card{
+  background:rgba(255,255,255,0.24);
+}
+
+html[data-theme='dark'] .production-box-body .documents-block .document-card{
+  background:rgba(17,25,40,0.62);
 }
 
 .build-inline[hidden]{
@@ -1907,6 +1929,14 @@ html[data-theme='dark'] .production-box-table tr.is-targeted{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
   gap:16px;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid var(--glass-stroke);
+  background:rgba(255,255,255,0.18);
+}
+
+html[data-theme='dark'] .production-box-summary{
+  background:rgba(17,25,40,0.55);
 }
 
 .production-box-stat{
@@ -2041,6 +2071,63 @@ html[data-theme='dark'] .status-pending{
 
 .production-box-item-code{
   font-size:13px;
+  color:var(--muted);
+}
+
+.build-complete-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  background:rgba(15,23,42,0.45);
+  backdrop-filter:blur(12px);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 0.2s ease;
+  z-index:5;
+}
+
+html[data-theme='dark'] .build-complete-overlay{
+  background:rgba(0,0,0,0.6);
+}
+
+.build-complete-overlay.is-visible{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.build-complete-card{
+  max-width:420px;
+  width:100%;
+  padding:28px;
+  border-radius:20px;
+  background:rgba(255,255,255,0.92);
+  box-shadow:var(--shadow);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:18px;
+  text-align:center;
+}
+
+html[data-theme='dark'] .build-complete-card{
+  background:rgba(17,25,40,0.88);
+}
+
+.build-complete-icon{
+  font-size:48px;
+}
+
+.build-complete-title{
+  margin:0;
+  font-size:22px;
+  font-weight:700;
+}
+
+.build-complete-copy{
+  margin:0;
   color:var(--muted);
 }
 

@@ -979,7 +979,12 @@ def index():
                     if 'T=PRODOTTO' in (item.datamatrix_code or '').upper()
                 )
         except Exception:
-            stock_on_hand = 0
+            stock_on_hand = None
+        if stock_on_hand in (None, 0):
+            try:
+                stock_on_hand = int(product.quantity_in_stock or 0)
+            except Exception:
+                stock_on_hand = 0
         product_cards.append({
             'product': product,
             'quantity_complete': qty_complete,

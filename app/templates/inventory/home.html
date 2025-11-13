@@ -51,7 +51,8 @@
             </div>
             <div style="text-align:center;">
               <h4 style="margin:0 0 4px 0; font-size:16px; font-weight:600;">{{ product.name }}</h4>
-              <p style="margin:0; font-size:14px; color:var(--text-muted);">Disponibili: {{ item.quantity_complete }}</p>
+              <p style="margin:0; font-size:14px; color:var(--text-muted);">Disponibili da costruire: {{ item.quantity_complete }}</p>
+              <p style="margin:4px 0 0 0; font-size:13px; color:var(--text-muted);">Stock: {{ item.stock_on_hand }}</p>
             </div>
           </a>
           {# Build controls: semaforo and costruisci button.  Placed outside the link to avoid capturing clicks. #}

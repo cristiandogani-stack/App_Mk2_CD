@@ -1,0 +1,285 @@
+{% set inline_mode = inline_mode | default(False) %}
+{% if embedded %}
+<style>
+  .app-header, .nav-mobile { display:none !important; }
+  .back-link { display:none !important; }
+</style>
+<script>
+(function(){
+  function init(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('submit', function(e){
+      const ok = confirm('Confermare la costruzione del prodotto?');
+      if (!ok) {
+        e.preventDefault();
+        return;
+      }
+      setTimeout(function(){
+        var notifier = function(){
+          if (typeof window.handleInlineBuildComplete === 'function') {
+            window.handleInlineBuildComplete('success');
+            return true;
+          }
+          return false;
+        };
+        if (!notifier()) {
+          if (window.parent && window.parent !== window) {
+            try {
+              if (typeof window.parent.handleInlineBuildComplete === 'function') {
+                window.parent.handleInlineBuildComplete('success');
+              } else if (typeof window.parent.handleEmbeddedBuildComplete === 'function') {
+                window.parent.handleEmbeddedBuildComplete('success');
+              } else {
+                window.parent.location.reload();
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          } else {
+            window.location.reload();
+          }
+        }
+      }, 1000);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+{% endif %}
+<section class="section workflow-section{% if inline_mode %} inline-build-fragment{% endif %}">
+  <div class="glass workflow-container">
+    <div class="workflow-hero">
+      <div class="workflow-hero-main">
+        <div class="workflow-thumb">
+          {% set prod_image = product.display_image_filename or product.image_filename %}
+          {% if prod_image %}
+            <img loading="lazy" src="{{ url_for('static', filename='uploads/' + prod_image) }}" alt="{{ product.name }}">
+          {% else %}
+            <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ product.name }}" style="filter:invert(1); opacity:0.7;">
+          {% endif %}
+        </div>
+        <div class="workflow-hero-copy">
+          <span class="workflow-eyebrow">Costruzione prodotto</span>
+          <h1 class="workflow-title">{{ product.name }}</h1>
+          {% if product.description %}
+            <p class="workflow-subtitle">{{ product.description }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="workflow-hero-actions">
+        <span id="product-status" class="workflow-indicator" title="Stato lavorazione">{{ '🟢 Pronto' if ready_parts and docs_ready and assoc_ready else '🔴 In attesa' }}</span>
+        {% if not inline_mode %}
+          <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost small back-link">Indietro</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if children|length == 0 %}
+      <div class="workflow-body">
+        <p class="muted" style="margin:0;">Nessun BOM definito per questo prodotto.</p>
+      </div>
+    {% else %}
+      <form method="post" enctype="multipart/form-data" class="workflow-form form">
+        <input type="hidden" name="back_url" value="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}">
+        {% if csrf_token %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% endif %}
+        {% set prod_docs = doc_map.get(product.id) %}
+        <div class="workflow-body">
+          <div class="workflow-main">
+            <div class="workflow-block">
+              <h4>Associa i componenti richiesti</h4>
+              <p class="muted" style="margin:0 0 12px;">Scansiona ogni componente fino al totale richiesto e assicurati che tutte le quantità siano disponibili.</p>
+              <div class="grid grid-2 workflow-association-grid">
+                {% for c in children %}
+                  {% set child = c.child %}
+                  <div class="card glass workflow-association-card">
+                    <div class="workflow-association-thumb">
+                      {% if child.display_image_filename %}
+                        <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.display_image_filename) }}" alt="{{ child.name }}">
+                      {% elif child.image_filename %}
+                        <img loading="lazy" src="{{ url_for('static', filename='uploads/' + child.image_filename) }}" alt="{{ child.name }}">
+                      {% else %}
+                        <img loading="lazy" src="{{ url_for('static', filename='img/gear.svg') }}" alt="{{ child.name }}" style="filter: invert(1); opacity:0.7;">
+                      {% endif %}
+                    </div>
+                    <h4 class="workflow-association-title">{{ child.name }}</h4>
+                    <p class="workflow-association-meta">Richiesti: {{ required_quantities.get(child.id, 1) }}</p>
+                    <p class="workflow-association-meta">Associati: {{ associated_counts.get(child.id, 0) }}</p>
+                    <p class="workflow-association-meta">Disponibili: {{ (child.quantity_in_stock or 0)|int }}</p>
+                    <button type="button"
+                            class="btn small primary associate"
+                            data-part-id="{{ child.id }}"
+                            data-part-name="{{ child.name }}"
+                            data-required="{{ required_quantities.get(child.id, 1) }}"
+                            data-associated="{{ associated_counts.get(child.id, 0) }}"
+                            {% if associated_counts.get(child.id, 0) >= required_quantities.get(child.id, 1) %}disabled{% endif %}>Associa</button>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <aside class="workflow-side">
+            <div class="workflow-block">
+              <h4>Documenti prodotto</h4>
+              {% if prod_docs %}
+                <div class="document-section">
+                  {% for folder_key, docs in prod_docs.items() %}
+                    {% if docs|length > 0 %}
+                      <div class="document-card">
+                        <div class="document-card-header">
+                          <span class="document-card-title">{{ doc_label_map.get(folder_key, folder_key) }}</span>
+                        </div>
+                        <div class="document-card-body">
+                          <div class="document-downloads">
+                            {% for doc in docs %}
+                              <div class="document-downloads-row">
+                                <span style="font-size:14px;">{{ doc.display_name }}</span>
+                                {% if doc.url %}
+                                  <a href="{{ doc.url }}" target="_blank" class="btn ghost small" style="white-space:nowrap;">Scarica</a>
+                                {% else %}
+                                  <span class="muted" style="white-space:nowrap;">—</span>
+                                {% endif %}
+                              </div>
+                            {% endfor %}
+                          </div>
+                          <input type="file" name="upload_{{ product.id }}_{{ folder_key }}_0" required>
+                          <span class="file-name document-file-name"></span>
+                        </div>
+                      </div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="muted" style="margin:0;">Nessuna documentazione richiesta per il prodotto.</p>
+              {% endif %}
+            </div>
+          </aside>
+        </div>
+        <div class="workflow-footer">
+          {% if not inline_mode %}
+            <a href="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}" class="btn ghost">Annulla</a>
+          {% endif %}
+          <button type="submit" class="btn primary" {% if not ready_all %}disabled{% endif %}>Costruisci</button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</section>
+<script>
+(function(){
+  function initDocReady(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    const fileInputs = form.querySelectorAll('input[type="file"]');
+    const statusSpan = document.getElementById('product-status');
+    const buildBtn = form.querySelector('button[type="submit"]');
+    const readyParts = {{ ready_parts | tojson | safe }};
+    const assocReady = {{ assoc_ready | tojson | safe }};
+    function update(){
+      let docsOk = fileInputs.length === 0;
+      if (!docsOk) {
+        docsOk = true;
+        fileInputs.forEach(function(inp){
+          if (!inp.files || inp.files.length === 0) {
+            docsOk = false;
+          }
+        });
+      }
+      if (statusSpan) {
+        statusSpan.textContent = docsOk && readyParts && assocReady ? '🟢 Pronto' : '🔴 In attesa';
+      }
+      if (buildBtn) {
+        buildBtn.disabled = !(docsOk && readyParts && assocReady);
+      }
+    }
+    fileInputs.forEach(function(inp){
+      inp.addEventListener('change', update);
+    });
+    update();
+  }
+  function initFileLabels(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('change', function(e){
+      const target = e.target;
+      if (target && target.type === 'file') {
+        const fileNameSpan = target.parentElement.querySelector('.file-name');
+        if (fileNameSpan) {
+          fileNameSpan.textContent = (target.files && target.files.length > 0) ? target.files[0].name : '';
+        }
+      }
+    });
+  }
+  function initAssociations(){
+    const assemblyCode = {{ assembly_code | tojson | safe }};
+    const associateButtons = document.querySelectorAll('.associate');
+    associateButtons.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if (!assemblyCode) {
+          alert('Nessun codice prodotto disponibile. Apri la costruzione da una prenotazione con scatola.');
+          return;
+        }
+        const partName = this.dataset.partName || '';
+        const scanned = prompt('Scansiona il datamatrix del componente ' + partName + ':');
+        if (!scanned) {
+          return;
+        }
+        const trimmed = scanned.trim();
+        let scannedPart = '';
+        try {
+          trimmed.split('|').forEach(function(seg){
+            if (seg.startsWith('P=')) {
+              scannedPart = seg.substring(2);
+            }
+          });
+        } catch (err) {
+          scannedPart = '';
+        }
+        if (scannedPart && partName && scannedPart.toLowerCase() !== partName.toLowerCase()) {
+          const proceed = confirm('Il codice letto (' + scannedPart + ') non corrisponde a ' + partName + '. Continuare comunque?');
+          if (!proceed) {
+            return;
+          }
+        }
+        fetch('{{ url_for('api.associate_component') }}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({
+            assembly_code: assemblyCode,
+            component_code: trimmed,
+            part_id: this.dataset.partId
+          })
+        }).then(function(resp){
+          if (resp.ok) {
+            window.location.reload();
+          } else {
+            return resp.json().then(function(data){
+              alert(data.message || 'Impossibile associare il componente.');
+            });
+          }
+        }).catch(function(){
+          alert('Si è verificato un errore durante l\'associazione.');
+        });
+      });
+    });
+  }
+  function init(){
+    initDocReady();
+    initFileLabels();
+    initAssociations();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

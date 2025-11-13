@@ -955,10 +955,30 @@ def index():
     product_cards: list[dict[str, object]] = []
     for product in products:
         qty_complete = _calculate_product_stock(product, reserved_products, reserved_structures)
+        stock_on_hand: int | None = None
         try:
-            stock_on_hand = int(product.quantity_in_stock or 0)
+            stock_query = (
+                db.session.query(func.count(StockItem.id))
+                .filter(StockItem.product_id == product.id)
+                .filter(StockItem.status == 'COMPLETATO')
+            )
+            try:
+                stock_query = stock_query.filter(
+                    func.upper(func.coalesce(StockItem.datamatrix_code, '')).like('%T=PRODOTTO%')
+                )
+            except Exception:
+                # When the database backend does not support ``coalesce``/``upper``
+                # fall back to counting all completed stock items for the product.
+                pass
+            counted = stock_query.scalar()
+            stock_on_hand = int(counted or 0)
         except Exception:
-            stock_on_hand = 0
+            stock_on_hand = None
+        if stock_on_hand in (None, 0):
+            try:
+                stock_on_hand = int(product.quantity_in_stock or 0)
+            except Exception:
+                stock_on_hand = 0
         product_cards.append({
             'product': product,
             'quantity_complete': qty_complete,

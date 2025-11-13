@@ -9,220 +9,214 @@
   description, the operator who performed the build and any
   associated documents.  Expanding a row reveals the components
   consumed during the build.  Nested sub‑assemblies are displayed
-  recursively in the same manner as the per‑product assembly archive.
-
-  The layout closely mirrors the design of ``product_archive_assemblies.html``
-  so that operators experience a consistent interface across component,
-  assembly and production history archives.  Search filtering and
-  DataMatrix rendering are implemented with client‑side scripts.
+  recursively so that operators can inspect the entire exploded bill
+  of materials for every production event.
 #}
 
 {% block title %}Magazzino – Storico produzione{% endblock %}
 
 {% block content %}
-<section class="section">
-  {# Styles to ensure a clean and responsive layout for the production history.
-     Columns are allowed to shrink and wrap long text; the documents cell uses
-     flexbox to wrap multiple buttons.  Descriptions are truncated with
-     ellipsis and show the full text on hover. #}
-  <style>
-  /* Allow grid cells to shrink below their content size and wrap long words */
-  .component-header .component-row > div,
-  .component-tree .component-row > div {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  /* Wrap document buttons so they don't overflow their cell */
-  .component-header .component-row > div:last-child,
-  .component-tree .component-row > div:last-child {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  /* Truncate long descriptions with ellipsis; full text appears on hover */
-  .desc-ellipsis {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Slightly indent the DataMatrix column header to align with the code image */
-  .component-header .component-row > div:nth-child(2) {
-    padding-left: 1.5rem;
-  }
-  </style>
-  <h2 class="section-title">Magazzino: Storico produzione</h2>
-  {# Tab navigation: allow toggling between the products index and the history.  The
-     ``active_tab`` variable passed from the view controls which button
-     appears highlighted.  When adding new tabs (e.g. parts, assemblies)
-     ensure their order matches the other inventory views. #}
-  <div class="tab-links" style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+<section class="section archive-page">
+  <div class="page-heading">
     <a href="{{ url_for('inventory.index') }}"
-       class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
-    <a href="{{ url_for('inventory.archive') }}"
-       class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
-  </div>
-  {# Search bar: filter rows by DataMatrix payload, name or description.  The
-     input is centred for visual alignment. #}
-  <div style="margin-bottom:12px; display:flex; justify-content:center;">
-    <input type="text" id="archive-search" class="input" placeholder="Cerca..."
-           style="width:100%; max-width:400px; padding:8px; border-radius:8px; border:1px solid var(--glass-stroke);">
-  </div>
-  {% if assemblies|length == 0 %}
-    <p class="muted">Nessun evento registrato.</p>
-  {% else %}
-    {# Header row: define seven columns including revision (Rev.).
-       Reduce the width of the date/time and description columns to make room
-       for the documents column.  The widths sum to 100%: 10% 14% 18% 20% 8% 12% 18%. #}
-    <div class="component-header">
-      <div class="component-row" style="grid-template-columns: 10% 14% 18% 20% 8% 12% 18%;">
-        <div>Data/Ora</div>
-        <div>DataMatrix</div>
-        <div>Nome</div>
-        <div>Descrizione</div>
-        <div>Rev.</div>
-        <div>Utente</div>
-        <div>Docs</div>
-      </div>
+       class="btn ghost small back-link"
+       data-fallback-url="{{ url_for('inventory.index') }}">← Indietro</a>
+    <div>
+      <h2 class="page-title">Magazzino · Storico produzione</h2>
+      <p class="page-subtitle">Cronologia delle costruzioni con dettaglio dei componenti consumati.</p>
     </div>
-    <div class="component-tree">
-      {# Recursive macro to render a component or assembly node.  When
-         a node has nested children the markup uses a collapsible
-         <details> wrapper; otherwise a simple row is output.  The
-         ``components`` key on a node holds its nested children.  The
-         ``docs`` key contains a list of (filename, url) tuples; when
-         empty the Docs button appears disabled. #}
+  </div>
+
+  <div class="archive-toolbar">
+    <div class="archive-tabs">
+      <a href="{{ url_for('inventory.index') }}"
+         class="btn small{{ ' primary' if active_tab == 'products' else ' ghost' }}">Prodotti</a>
+      <a href="{{ url_for('inventory.archive') }}"
+         class="btn small{{ ' primary' if active_tab == 'archive' else ' ghost' }}">Storico&nbsp;produzione</a>
+    </div>
+    <div class="archive-search">
+      <input type="search" id="production-history-search" placeholder="Cerca evento..." aria-label="Cerca nello storico produzione">
+    </div>
+  </div>
+
+  {% if assemblies|length == 0 %}
+    <div class="archive-empty">
+      <p class="muted">Nessun evento registrato.</p>
+    </div>
+  {% else %}
+    <div id="production-history" class="archive-grid" style="--archive-columns: 150px 160px minmax(200px,1.4fr) minmax(240px,1.6fr) 90px 160px minmax(150px,1fr);">
+      <div class="archive-header">
+        <span>Data/Ora</span>
+        <span>DataMatrix</span>
+        <span>Nome</span>
+        <span>Descrizione</span>
+        <span>Rev.</span>
+        <span>Utente</span>
+        <span>Docs</span>
+      </div>
       {% macro render_node(node) %}
         {% set has_children = node.components is defined and node.components|length > 0 %}
         {% if has_children %}
-          <details class="component-node">
+          <details class="archive-node">
             <summary>
-              <div class="component-row glass" style="grid-template-columns: 10% 14% 18% 20% 8% 12% 18%; border:1px solid var(--glass-stroke); border-radius:var(--radius); margin-bottom:4px; padding:8px 12px;">
-                <div>
-                  {% if node.timestamp %}
-                    <span>{{ node.timestamp.strftime('%Y-%m-%d') }}</span><br>
-                    <span>{{ node.timestamp.strftime('%H:%M:%S') }}</span>
-                  {% endif %}
-                </div>
-                <div style="text-align:center;">
-                  <div class="dm-container" data-code="{{ node.datamatrix | e }}"
-                       style="display:inline-block; background:#fff; padding:2px; border:1px solid var(--glass-stroke); border-radius:4px; width:60px; height:60px; line-height:60px; text-align:center; font-family:monospace; font-size:10px; overflow:hidden; white-space:nowrap;"></div>
-                </div>
-                <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
-                <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
-                <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.revision if node.revision else '—' }}</div>
-                <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
-                <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
-                  {# Provide a Docs link when the product_id is available.  Use stopPropagation and
-                     preventDefault to avoid toggling the row on click, and navigate explicitly
-                     using window.location.href.  When product_id is not present, show a disabled
-                     placeholder. #}
+              <div class="archive-cell" data-title="Data/Ora">
+                {% if node.timestamp %}
+                  <span class="cell-text">{{ node.timestamp.strftime('%d/%m/%Y') }}</span>
+                  <span class="muted">{{ node.timestamp.strftime('%H:%M') }}</span>
+                {% else %}
+                  <span class="cell-text">—</span>
+                {% endif %}
+              </div>
+              <div class="archive-cell" data-title="DataMatrix">
+                <span class="dm-preview" data-code="{{ node.datamatrix | e }}"></span>
+                {% if node.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ node.datamatrix }}</span>{% endif %}
+              </div>
+              <div class="archive-cell" data-title="Nome">
+                <span class="cell-text">{{ node.name }}</span>
+              </div>
+              <div class="archive-cell" data-title="Descrizione">
+                <span class="cell-text" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</span>
+              </div>
+              <div class="archive-cell" data-title="Rev.">
+                <span class="cell-text">{{ node.revision if node.revision else '—' }}</span>
+              </div>
+              <div class="archive-cell" data-title="Utente">
+                <span class="cell-text">{{ node.user if node.user else '—' }}</span>
+              </div>
+              <div class="archive-cell" data-title="Documenti">
+                <div class="archive-docs">
                   {% if node.product_id %}
-                    {# Pass the production box id to filter documents for the specific build when available #}
                     <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
                        class="btn ghost small"
-                       style="margin-right:4px; margin-top:0; margin-bottom:4px;"
-                       onclick="event.stopPropagation(); event.preventDefault(); window.location.href=this.href;">
-                      Docs
-                    </a>
+                       onclick="event.stopPropagation();">Docs</a>
                   {% else %}
-                    <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;" title="Nessun documento"
-                          onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+                    <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
                   {% endif %}
                 </div>
               </div>
             </summary>
-            <div class="children" style="padding-left:20px; margin-bottom:8px;">
-              {% for c in node.components %}
-                {{ render_node(c) }}
+            <div class="archive-children">
+              {% for child in node.components %}
+                {{ render_node(child) }}
               {% endfor %}
             </div>
           </details>
         {% else %}
-          <div class="component-row glass" style="grid-template-columns: 10% 14% 18% 20% 8% 12% 18%; border:1px solid var(--glass-stroke); border-radius:var(--radius); margin-bottom:4px; padding:8px 12px;">
-            <div>
+          <div class="archive-row" data-archive-row>
+            <div class="archive-cell" data-title="Data/Ora">
               {% if node.timestamp %}
-                <span>{{ node.timestamp.strftime('%Y-%m-%d') }}</span><br>
-                <span>{{ node.timestamp.strftime('%H:%M:%S') }}</span>
-              {% endif %}
-            </div>
-            <div style="text-align:center;">
-              <div class="dm-container" data-code="{{ node.datamatrix | e }}"
-                   style="display:inline-block; background:#fff; padding:2px; border:1px solid var(--glass-stroke); border-radius:4px; width:60px; height:60px; line-height:60px; text-align:center; font-family:monospace; font-size:10px; overflow:hidden; white-space:nowrap;"></div>
-            </div>
-            <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.name }}</div>
-            <div class="desc-ellipsis" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</div>
-            <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.revision if node.revision else '—' }}</div>
-            <div style="overflow-wrap:anywhere; word-break:break-word;">{{ node.user if node.user else '—' }}</div>
-            <div style="white-space:normal; overflow-wrap:anywhere; word-break:break-word; display:flex; align-items:flex-start; flex-wrap:wrap;">
-              {# For leaf components in the global history, provide a Docs link when a product_id
-                 is available.  Otherwise show a disabled placeholder.  The click handler
-                 prevents toggling the row and navigates explicitly to the documents page. #}
-              {% if node.product_id %}
-                {# Use the production box id to scope document retrieval to this production history entry. #}
-                <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
-                   class="btn ghost small"
-                   style="margin-right:4px; margin-top:0; margin-bottom:4px;"
-                   onclick="event.stopPropagation(); event.preventDefault(); window.location.href=this.href;">
-                  Docs
-                </a>
+                <span class="cell-text">{{ node.timestamp.strftime('%d/%m/%Y') }}</span>
+                <span class="muted">{{ node.timestamp.strftime('%H:%M') }}</span>
               {% else %}
-                <span class="btn ghost small disabled" style="margin-right:4px; margin-top:0; margin-bottom:4px;"
-                      title="Nessun documento" onclick="event.stopPropagation(); event.preventDefault();">Docs</span>
+                <span class="cell-text">—</span>
               {% endif %}
+            </div>
+            <div class="archive-cell" data-title="DataMatrix">
+              <span class="dm-preview" data-code="{{ node.datamatrix | e }}"></span>
+              {% if node.datamatrix %}<span class="muted" style="overflow-wrap:anywhere;">{{ node.datamatrix }}</span>{% endif %}
+            </div>
+            <div class="archive-cell" data-title="Nome">
+              <span class="cell-text">{{ node.name }}</span>
+            </div>
+            <div class="archive-cell" data-title="Descrizione">
+              <span class="cell-text" title="{{ node.description if node.description else '' }}">{{ node.description if node.description else '—' }}</span>
+            </div>
+            <div class="archive-cell" data-title="Rev.">
+              <span class="cell-text">{{ node.revision if node.revision else '—' }}</span>
+            </div>
+            <div class="archive-cell" data-title="Utente">
+              <span class="cell-text">{{ node.user if node.user else '—' }}</span>
+            </div>
+            <div class="archive-cell" data-title="Documenti">
+              <div class="archive-docs">
+                {% if node.product_id %}
+                  <a href="{{ url_for('inventory.product_docs_view', product_id=node.product_id, code=node.datamatrix, src='archive', box_id=node.box_id) }}"
+                     class="btn ghost small"
+                     onclick="event.stopPropagation();">Docs</a>
+                {% else %}
+                  <span class="btn ghost small disabled" title="Nessun documento" onclick="event.stopPropagation();">Docs</span>
+                {% endif %}
+              </div>
             </div>
           </div>
         {% endif %}
       {% endmacro %}
+
       {% for asm in assemblies %}
         {{ render_node(asm) }}
       {% endfor %}
     </div>
   {% endif %}
-</section>
-{# Client-side scripts: draw DataMatrix codes and filter the archive.  The
-   datamatrix.min.js library is loaded from the static folder.  When
-   unavailable the code text is displayed instead.  The search input
-   filters both assemblies and components based on text content. #}
-<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-  // Render DataMatrix images
-  try {
-    const containers = document.querySelectorAll('.dm-container');
-    containers.forEach(function(el){
-      const code = el.getAttribute('data-code');
-      if (!code) return;
-      try {
-        const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000','#fff'] });
-        el.innerHTML = '';
-        el.appendChild(svg);
-      } catch (err) {
-        el.textContent = code;
+
+  <script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const searchInput = document.getElementById('production-history-search');
+      const container = document.getElementById('production-history');
+
+      if (searchInput && container) {
+        const leafRows = () => container.querySelectorAll('.archive-row[data-archive-row]');
+        const detailNodes = () => container.querySelectorAll('details.archive-node');
+
+        const applyFilter = (value) => {
+          const query = value.toLowerCase().trim();
+          if (!query) {
+            leafRows().forEach((row) => {
+              row.style.display = '';
+            });
+            detailNodes().forEach((node) => {
+              node.style.display = '';
+              node.open = false;
+            });
+            return;
+          }
+
+          leafRows().forEach((row) => {
+            const match = row.textContent.toLowerCase().includes(query);
+            row.style.display = match ? '' : 'none';
+          });
+
+          Array.from(detailNodes()).reverse().forEach((node) => {
+            const summary = node.querySelector('summary');
+            const summaryMatch = summary ? summary.textContent.toLowerCase().includes(query) : false;
+            const children = node.querySelectorAll(':scope > .archive-children > *');
+            let childVisible = false;
+            children.forEach((child) => {
+              if (child.style.display !== 'none') {
+                childVisible = true;
+              }
+            });
+            const shouldShow = summaryMatch || childVisible;
+            node.style.display = shouldShow ? '' : 'none';
+            node.open = shouldShow;
+          });
+        };
+
+        searchInput.addEventListener('input', function () {
+          applyFilter(this.value);
+        });
       }
-    });
-  } catch (err) {
-    // If the library fails to load, leave contents untouched
-  }
-  // Filter archive rows based on search input
-  const input = document.getElementById('archive-search');
-  if (input) {
-    input.addEventListener('input', function(){
-      const query = this.value.toLowerCase().trim();
-      // Hide or show details elements and component rows based on match
-      const nodes = document.querySelectorAll('.component-tree details, .component-tree .component-row');
-      nodes.forEach(function(node){
-        // Collapse details when filtering
-        if (node.tagName && node.tagName.toLowerCase() === 'details') {
-          node.open = false;
+
+      const dmContainers = document.querySelectorAll('#production-history .dm-preview[data-code]');
+      const canRenderDM = typeof window.DATAMatrix === 'function';
+      dmContainers.forEach((el) => {
+        const code = el.getAttribute('data-code');
+        if (!code) {
+          return;
         }
-        const text = node.textContent.toLowerCase();
-        const match = (query === '' || text.includes(query));
-        node.style.display = match ? '' : 'none';
+        if (canRenderDM) {
+          try {
+            const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
+            el.innerHTML = '';
+            el.appendChild(svg);
+            return;
+          } catch (err) {
+            // fall back to text rendering
+          }
+        }
+        el.textContent = code;
       });
     });
-  }
-});
-</script>
+  </script>
+</section>
 {% endblock %}

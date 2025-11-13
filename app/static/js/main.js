@@ -1,3 +1,148 @@
+// Track navigation between top-level modules and normalise the behaviour of
+// "back" buttons throughout the app.  Each page stores the current module and
+// URL in sessionStorage so that subsequent pages can determine where the user
+// arrived from.  Back buttons with the `.back-link` class automatically use the
+// previously visited module (tab) when possible, falling back to the element's
+// href or `data-fallback-url` attribute.
+document.addEventListener('DOMContentLoaded', () => {
+  const body = document.body;
+  const moduleSlug = body ? (body.getAttribute('data-module') || '') : '';
+  const currentPath = window.location.pathname + window.location.search;
+  const origin = window.location.origin;
+
+  const toAbsolute = (value) => {
+    if (!value) {
+      return '';
+    }
+    try {
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        const url = new URL(value);
+        return url.origin + url.pathname + url.search;
+      }
+      if (value.startsWith('//')) {
+        const url = new URL(window.location.protocol + value);
+        return url.origin + url.pathname + url.search;
+      }
+      const path = value.startsWith('/') ? value : `/${value}`;
+      return origin + path;
+    } catch (err) {
+      return value;
+    }
+  };
+
+  try {
+    const lastModule = sessionStorage.getItem('currentModule');
+    if (lastModule && lastModule !== moduleSlug) {
+      sessionStorage.setItem('previousModule', lastModule);
+    } else if (!lastModule) {
+      sessionStorage.removeItem('previousModule');
+    }
+    if (moduleSlug) {
+      sessionStorage.setItem('currentModule', moduleSlug);
+      sessionStorage.setItem(`lastUrlFor:${moduleSlug}`, currentPath);
+    } else {
+      sessionStorage.removeItem('currentModule');
+    }
+  } catch (err) {
+    // Ignore storage errors (private mode, disabled storage, etc.)
+  }
+
+  const resolveBackTarget = (moduleHint) => {
+    const absoluteCurrent = origin + window.location.pathname + window.location.search;
+    let target = '';
+    try {
+      const hint = moduleHint || sessionStorage.getItem('previousModule') || '';
+      if (hint) {
+        const stored = sessionStorage.getItem(`lastUrlFor:${hint}`) || '';
+        if (stored) {
+          const absStored = toAbsolute(stored);
+          if (absStored && absStored !== absoluteCurrent) {
+            target = stored.startsWith('http') ? absStored : (stored.startsWith('/') ? stored : `/${stored}`);
+            return target;
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore storage errors
+    }
+
+    try {
+      if (document.referrer) {
+        const refUrl = new URL(document.referrer, origin);
+        const refAbsolute = refUrl.origin + refUrl.pathname + refUrl.search;
+        if (refAbsolute !== absoluteCurrent) {
+          if (refUrl.origin === origin) {
+            return refUrl.pathname + refUrl.search;
+          }
+          return document.referrer;
+        }
+      }
+    } catch (err) {
+      // If referrer parsing fails, fall through
+      if (document.referrer) {
+        return document.referrer;
+      }
+    }
+
+    return target;
+  };
+
+  document.addEventListener('click', (event) => {
+    const backEl = event.target.closest('a.back-link, button.back-link');
+    if (!backEl) {
+      return;
+    }
+    const behaviour = backEl.dataset.moduleBack || '';
+    if (behaviour === 'off') {
+      return;
+    }
+    const href = backEl.getAttribute('href');
+    if (behaviour === 'fallback') {
+      let finalTarget = backEl.dataset.fallbackUrl || '';
+      if (!finalTarget && href && href !== '#') {
+        finalTarget = href;
+      }
+      if (!finalTarget) {
+        return;
+      }
+      event.preventDefault();
+      if (finalTarget.startsWith('http://') || finalTarget.startsWith('https://')) {
+        window.location.href = finalTarget;
+      } else if (finalTarget.startsWith('//')) {
+        window.location.href = window.location.protocol + finalTarget;
+      } else {
+        const path = finalTarget.startsWith('/') ? finalTarget : `/${finalTarget}`;
+        window.location.href = path;
+      }
+      return;
+    }
+    let moduleHint = backEl.dataset.backModule || '';
+    if (moduleHint === 'current') {
+      moduleHint = moduleSlug;
+    }
+    const destination = resolveBackTarget(moduleHint);
+    let finalTarget = destination;
+    if (!finalTarget && backEl.dataset.fallbackUrl) {
+      finalTarget = backEl.dataset.fallbackUrl;
+    }
+    if (!finalTarget && href && href !== '#') {
+      finalTarget = href;
+    }
+    if (!finalTarget) {
+      return;
+    }
+    event.preventDefault();
+    if (finalTarget.startsWith('http://') || finalTarget.startsWith('https://')) {
+      window.location.href = finalTarget;
+    } else if (finalTarget.startsWith('//')) {
+      window.location.href = window.location.protocol + finalTarget;
+    } else {
+      const path = finalTarget.startsWith('/') ? finalTarget : `/${finalTarget}`;
+      window.location.href = path;
+    }
+  }, { capture: true });
+});
+
 // Mobile menu toggle & theme cycling
 document.addEventListener('DOMContentLoaded', () => {
   const burger = document.getElementById('hamburger');

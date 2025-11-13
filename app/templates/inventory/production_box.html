@@ -105,7 +105,7 @@
                   <span class="document-card-title">{{ doc_name }}</span>
                   <div class="document-card-meta">
                     {% if doc_path %}
-                      <a href="{{ url_for('static', filename=doc_path) }}" target="_blank" class="btn ghost small">Scarica</a>
+                      <a href="{{ url_for('static', filename=doc_path) }}" class="btn ghost small" download="{{ doc_name }}">Scarica</a>
                     {% else %}
                       <span class="muted" style="white-space:nowrap;">—</span>
                     {% endif %}
@@ -161,7 +161,18 @@
                   <tr>
                     <td data-title="#">{{ row.index }}</td>
                     <td data-title="DataMatrix">
-                      <div class="dm-container" data-code="{{ item.datamatrix_code | e }}"></div>
+                      <div class="dm-container">
+                        {% if item.datamatrix_image %}
+                          <img src="data:image/png;base64,{{ item.datamatrix_image }}"
+                               alt="Datamatrix {{ item.product.code or item.product.name }}"
+                               loading="lazy"
+                               data-dm-code="{{ item.datamatrix_payload | e }}">
+                        {% elif item.datamatrix_payload %}
+                          <span class="dm-fallback" title="{{ item.datamatrix_payload }}">{{ item.datamatrix_payload }}</span>
+                        {% else %}
+                          <span class="dm-fallback muted">—</span>
+                        {% endif %}
+                      </div>
                     </td>
                     <td data-title="Elemento">
                       <div class="production-box-item">
@@ -175,7 +186,11 @@
                       <span class="status-pill {{ status_class }}">{{ item.status }}</span>
                     </td>
                     <td data-title="Download" class="text-right">
-                      <button class="btn small ghost dm-download">Scarica&nbsp;Datamatrix</button>
+                      <button class="btn small ghost dm-download"
+                              type="button"
+                              data-dm-image="{{ item.datamatrix_image }}"
+                              data-dm-code="{{ item.datamatrix_payload | e }}"
+                              data-base-name="{{ item.product.code or 'datamatrix' }}">Scarica&nbsp;Datamatrix</button>
                     </td>
                     {% if show_row_actions %}
                       <td data-title="Azioni" class="text-right">
@@ -221,12 +236,6 @@
 {% endif %}
 
 {% endblock %}
-
-{# Load the client-side DataMatrix library.  This script defines a global
-   `DATAMatrix` function which creates SVG elements representing the
-   specified message.  The library must be loaded before the code
-   below invokes `DATAMatrix` to render and download DataMatrix codes. #}
-<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
@@ -296,10 +305,16 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   function openLoadModal(trigger, options){
+    const targetUrl = resolveLoadUrl(trigger, options);
     if (!loadModal || !loadFrame) {
+      const destination = targetUrl || (trigger ? trigger.getAttribute('data-load-url') : null) || defaultLoadUrl;
+      if (destination) {
+        window.location.href = destination;
+      } else {
+        alert('Impossibile aprire il caricamento per questo box.');
+      }
       return;
     }
-    const targetUrl = resolveLoadUrl(trigger, options);
     if (!targetUrl) {
       alert('Impossibile aprire il caricamento per questo box.');
       return;
@@ -327,37 +342,41 @@ document.addEventListener('DOMContentLoaded', function(){
   const btnBuild = document.getElementById('btn-open-build');
   if (btnBuild) {
     btnBuild.addEventListener('click', function(){
+      const buildUrl = btnBuild.getAttribute('data-build-url');
+      if (!buildUrl) {
+        alert('Impossibile avviare la costruzione per questo box.');
+        return;
+      }
       const modal = document.getElementById('buildModal');
       const iframe = document.getElementById('buildFrame');
-      if (modal && iframe) {
-        // Determine the build URL from the data attribute on the button.
-        const buildUrl = btnBuild.getAttribute('data-build-url');
-        if (!buildUrl) return;
-        iframe.src = buildUrl;
-        modal.style.display = 'flex';
-        modal.setAttribute('aria-hidden', 'false');
-        // When the iframe finishes loading, check whether it has navigated
-        // away from the internal build pages (/inventory/build or
-        // /inventory/build_product).  When the path is different we assume
-        // the build has completed and reload the parent page.
-        iframe.onload = function() {
-          try {
-            const loc = iframe.contentWindow.location;
-            const href = loc && loc.href ? loc.href : '';
-            const path = loc && loc.pathname ? loc.pathname : '';
-            if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
-              iframe.onload = null;
-              modal.style.display = 'none';
-              modal.setAttribute('aria-hidden', 'true');
-              iframe.src = '';
-              alert('Costruzione completata con successo');
-              window.location.reload();
-            }
-          } catch (err) {
-            // Ignore cross-origin or other errors
-          }
-        };
+      if (!modal || !iframe) {
+        window.location.href = buildUrl;
+        return;
       }
+      iframe.src = buildUrl;
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      // When the iframe finishes loading, check whether it has navigated
+      // away from the internal build pages (/inventory/build or
+      // /inventory/build_product).  When the path is different we assume
+      // the build has completed and reload the parent page.
+      iframe.onload = function() {
+        try {
+          const loc = iframe.contentWindow.location;
+          const href = loc && loc.href ? loc.href : '';
+          const path = loc && loc.pathname ? loc.pathname : '';
+          if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
+            iframe.onload = null;
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+            iframe.src = '';
+            alert('Costruzione completata con successo');
+            window.location.reload();
+          }
+        } catch (err) {
+          // Ignore cross-origin or other errors
+        }
+      };
     });
   }
   // Close the build modal
@@ -377,24 +396,6 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  // -----------------------------------------------------------------------------
-  // DataMatrix generation and download functionality
-  // -----------------------------------------------------------------------------
-  const dmContainers = document.querySelectorAll('.dm-container');
-  dmContainers.forEach(function(container) {
-    const code = container.getAttribute('data-code');
-    if (code) {
-      try {
-        const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-        container.innerHTML = '';
-        container.appendChild(svg);
-      } catch (err) {
-        console.error('Failed to generate DataMatrix for', code, err);
-        container.textContent = code;
-      }
-    }
-  });
-
   const perItemButtons = document.querySelectorAll('.load-item');
   if (perItemButtons && perItemButtons.length > 0) {
     perItemButtons.forEach(function(btn) {
@@ -408,70 +409,59 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  // Convert an SVG element to a PNG data URL using a canvas.  The
-  // returned promise resolves to a data URL representing the PNG.  This
-  // helper is used when downloading the DataMatrix image.
-  function svgToPngDataUrl(svgElement, size) {
-    return new Promise(function(resolve, reject) {
-      try {
-        const svgString = new XMLSerializer().serializeToString(svgElement);
-        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        const canvas = document.createElement('canvas');
-        const rect = svgElement.getBoundingClientRect();
-        const width = size || rect.width || 120;
-        const height = size || rect.height || 120;
-        canvas.width = width;
-        canvas.height = height;
-        img.onload = function() {
-          const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, width, height);
-          ctx.drawImage(img, 0, 0, width, height);
-          URL.revokeObjectURL(url);
-          try {
-            const pngData = canvas.toDataURL('image/png');
-            resolve(pngData);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        img.onerror = function(err) {
-          URL.revokeObjectURL(url);
-          reject(err);
-        };
-        img.src = url;
-      } catch (err) {
-        reject(err);
-      }
-    });
+  function triggerDownload(blob, filename) {
+    const link = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
   }
 
-  // Attach download handlers to each DataMatrix download button.  The
-  // handler locates the sibling SVG, converts it to PNG and triggers a
-  // download with a filename derived from the product code when available.
+  function base64ToBlob(base64Data) {
+    const clean = (base64Data || '').replace(/\s+/g, '');
+    const binary = atob(clean);
+    const len = binary.length;
+    const buffer = new ArrayBuffer(len);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < len; i += 1) {
+      view[i] = binary.charCodeAt(i);
+    }
+    return new Blob([buffer], { type: 'image/png' });
+  }
+
+  // Attach download handlers to each DataMatrix download button.  Each button
+  // includes the pre-rendered PNG (base64) generated on the server so the
+  // download works even when the barcode library is unavailable client-side.
   const downloadButtons = document.querySelectorAll('.dm-download');
   if (downloadButtons && downloadButtons.length > 0) {
     downloadButtons.forEach(function(btn) {
       btn.addEventListener('click', function(evt) {
         evt.preventDefault();
-        const row = btn.closest('tr');
-        if (!row) return;
-        const svg = row.querySelector('.dm-container svg');
-        if (!svg) return;
-        svgToPngDataUrl(svg, 240).then(function(dataUrl) {
-          const link = document.createElement('a');
-          const codeCell = row.querySelector('.production-box-item-code');
-          const baseName = codeCell ? codeCell.textContent.trim() : 'datamatrix';
-          link.href = dataUrl;
-          link.download = baseName ? baseName + '-datamatrix.png' : 'datamatrix.png';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }).catch(function(err) {
-          console.error('Unable to download DataMatrix', err);
-          alert('Impossibile scaricare il Datamatrix.');
-        });
+        const baseName = btn.getAttribute('data-base-name') || 'datamatrix';
+        const trimmedName = baseName ? baseName.toString().trim() : '';
+        const safeBase = trimmedName ? trimmedName.replace(/[^a-zA-Z0-9-_]+/g, '_') : 'datamatrix';
+        const encoded = btn.getAttribute('data-dm-image') || '';
+        const payload = btn.getAttribute('data-dm-code') || '';
+        if (encoded) {
+          try {
+            const blob = base64ToBlob(encoded);
+            const fileName = safeBase + '-datamatrix.png';
+            triggerDownload(blob, fileName);
+            return;
+          } catch (err) {
+            console.error('Unable to decode pre-rendered DataMatrix', err);
+          }
+        }
+        if (payload) {
+          const fallbackBlob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
+          const fallbackName = safeBase + '-datamatrix.txt';
+          triggerDownload(fallbackBlob, fallbackName);
+          return;
+        }
+        alert('Impossibile scaricare il Datamatrix.');
       });
     });
   }

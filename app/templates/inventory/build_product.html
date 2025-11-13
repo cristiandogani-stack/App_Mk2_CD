@@ -51,15 +51,18 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     // After submission, close the modal and refresh the parent page
     setTimeout(function(){
-      if (window.parent) {
+      if (window.parent && window.parent !== window) {
         try {
-          const parentDoc = window.parent.document;
-          const modal = parentDoc.getElementById('buildModal');
-          const iframe = parentDoc.getElementById('buildFrame');
-          if (iframe) iframe.src = '';
-          if (modal) modal.style.display = 'none';
-          // Refresh the parent page so that stock and box status update
-          window.parent.location.reload();
+          if (typeof window.parent.handleEmbeddedBuildComplete === 'function') {
+            window.parent.handleEmbeddedBuildComplete('success');
+          } else {
+            const parentDoc = window.parent.document;
+            const modal = parentDoc.getElementById('buildModal');
+            const iframe = parentDoc.getElementById('buildFrame');
+            if (iframe) iframe.src = '';
+            if (modal) modal.style.display = 'none';
+            window.parent.location.reload();
+          }
         } catch(err) {
           console.error(err);
         }

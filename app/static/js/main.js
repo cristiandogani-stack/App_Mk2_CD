@@ -87,3 +87,338 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 });
+
+// Production box interactions (load/build modals and DataMatrix download handling)
+document.addEventListener('DOMContentLoaded', function(){
+  const productionSection = document.querySelector('.production-box-section');
+  if (!productionSection) {
+    return;
+  }
+
+  const buildPanel = document.getElementById('build-inline-panel');
+  const buildFrame = document.getElementById('buildFrame');
+  const buildLoader = buildPanel ? buildPanel.querySelector('.build-inline-loader') : null;
+  const boxId = productionSection.getAttribute('data-box-id') || '';
+  const sectionLoadBase = productionSection.getAttribute('data-load-base') || '';
+  const defaultLoadUrl = sectionLoadBase;
+
+  function resolveLoadUrl(trigger, options){
+    const candidate = (options && options.baseUrl) || (trigger ? trigger.getAttribute('data-load-url') : null) || defaultLoadUrl;
+    if (!candidate) {
+      return '';
+    }
+    const params = new URLSearchParams();
+    if (boxId) {
+      params.set('box_id', boxId);
+    }
+    if (options && options.itemId) {
+      params.set('item_id', options.itemId);
+    }
+    if (options && options.autoSelect) {
+      params.set('auto_select', '1');
+    }
+    const backUrl = (options && options.backUrl) || (window.location.pathname + window.location.search);
+    if (backUrl) {
+      params.set('back_url', backUrl);
+    }
+    try {
+      const url = new URL(candidate, window.location.origin);
+      params.forEach((value, key) => {
+        url.searchParams.set(key, value);
+      });
+      let finalUrl = url.pathname + url.search;
+      if (url.hash) {
+        finalUrl += url.hash;
+      }
+      return finalUrl;
+    } catch (err) {
+      const sep = candidate.indexOf('?') === -1 ? '?' : '&';
+      return candidate + sep + params.toString();
+    }
+  }
+
+  const btnOpenLoad = document.getElementById('btn-open-load');
+  if (btnOpenLoad) {
+    btnOpenLoad.addEventListener('click', function(evt){
+      evt.preventDefault();
+      const targetUrl = resolveLoadUrl(btnOpenLoad, { autoSelect: true, backUrl: window.location.pathname + window.location.search });
+      if (targetUrl) {
+        window.location.href = targetUrl;
+      } else {
+        alert('Impossibile aprire il caricamento per questo box.');
+      }
+    });
+  }
+
+  const btnBuild = document.getElementById('btn-open-build');
+  const btnCloseBuild = document.getElementById('btn-close-build');
+
+  function showBuildPanel(){
+    if (!buildPanel) {
+      return;
+    }
+    buildPanel.hidden = false;
+    buildPanel.setAttribute('data-state', 'loading');
+    if (buildLoader) {
+      buildLoader.classList.add('is-visible');
+    }
+  }
+
+  function hideBuildPanel(){
+    if (!buildPanel) {
+      return;
+    }
+    buildPanel.hidden = true;
+    buildPanel.removeAttribute('data-state');
+    if (buildLoader) {
+      buildLoader.classList.remove('is-visible');
+    }
+  }
+
+  function markBuildReady(){
+    if (!buildPanel) {
+      return;
+    }
+    buildPanel.setAttribute('data-state', 'ready');
+    if (buildLoader) {
+      buildLoader.classList.remove('is-visible');
+    }
+  }
+
+  function resetBuildFrame(){
+    if (!buildFrame) {
+      return;
+    }
+    buildFrame.removeAttribute('data-active-url');
+    buildFrame.src = 'about:blank';
+  }
+
+  if (btnBuild) {
+    btnBuild.addEventListener('click', function(evt){
+      evt.preventDefault();
+      const buildUrl = btnBuild.getAttribute('data-build-url');
+      if (!buildUrl) {
+        alert('Impossibile avviare la costruzione per questo box.');
+        return;
+      }
+      if (!buildPanel || !buildFrame) {
+        window.location.href = buildUrl;
+        return;
+      }
+      showBuildPanel();
+      const cacheKey = buildFrame.getAttribute('data-active-url');
+      const sameTarget = cacheKey && cacheKey === buildUrl;
+      const finalUrl = buildUrl + (buildUrl.indexOf('?') === -1 ? '?' : '&') + 'ts=' + Date.now();
+      buildFrame.setAttribute('data-active-url', buildUrl);
+      if (!sameTarget) {
+        buildFrame.src = finalUrl;
+      } else if (buildLoader) {
+        buildLoader.classList.remove('is-visible');
+        buildPanel.setAttribute('data-state', 'ready');
+      }
+      buildPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  if (buildFrame) {
+    buildFrame.addEventListener('load', function(){
+      if (!buildPanel || buildPanel.hidden) {
+        return;
+      }
+      markBuildReady();
+    });
+  }
+
+  if (btnCloseBuild) {
+    btnCloseBuild.addEventListener('click', function(evt){
+      evt.preventDefault();
+      resetBuildFrame();
+      hideBuildPanel();
+      if (btnBuild) {
+        btnBuild.focus({ preventScroll: false });
+      }
+    });
+  }
+
+  if (typeof window.handleEmbeddedBuildComplete !== 'function') {
+    window.handleEmbeddedBuildComplete = function(status){
+      resetBuildFrame();
+      hideBuildPanel();
+      if (status === 'success') {
+        window.location.reload();
+      }
+    };
+  }
+
+  const perItemButtons = document.querySelectorAll('.load-item');
+  if (perItemButtons && perItemButtons.length > 0) {
+    perItemButtons.forEach((btn) => {
+      btn.addEventListener('click', function(evt){
+        evt.stopPropagation();
+        evt.preventDefault();
+        const itemId = this.getAttribute('data-item-id');
+        const targetUrl = resolveLoadUrl(this, { itemId: itemId, autoSelect: true, backUrl: window.location.pathname + window.location.search });
+        if (targetUrl) {
+          window.location.href = targetUrl;
+        } else {
+          alert('Impossibile aprire il caricamento per questo componente.');
+        }
+      });
+    });
+  }
+
+  function triggerDownload(blob, filename){
+    const link = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function base64ToBlob(base64Data){
+    const clean = (base64Data || '').replace(/\s+/g, '');
+    const binary = atob(clean);
+    const len = binary.length;
+    const buffer = new ArrayBuffer(len);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < len; i += 1) {
+      view[i] = binary.charCodeAt(i);
+    }
+    return new Blob([buffer], { type: 'image/png' });
+  }
+
+  function svgToPngDataUrl(svgElement, size){
+    return new Promise((resolve, reject) => {
+      try {
+        const svgString = new XMLSerializer().serializeToString(svgElement);
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        const canvas = document.createElement('canvas');
+        const dimension = size || Math.max(svgElement.clientWidth, svgElement.clientHeight, 240);
+        canvas.width = dimension;
+        canvas.height = dimension;
+        img.onload = function(){
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            URL.revokeObjectURL(url);
+            reject(new Error('Contesto canvas non disponibile'));
+            return;
+          }
+          ctx.clearRect(0, 0, dimension, dimension);
+          ctx.drawImage(img, 0, 0, dimension, dimension);
+          URL.revokeObjectURL(url);
+          try {
+            resolve(canvas.toDataURL('image/png'));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = function(err){
+          URL.revokeObjectURL(url);
+          reject(err);
+        };
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function renderDataMatrix(){
+    const containers = document.querySelectorAll('.dm-container[data-dm-code]');
+    if (!containers || containers.length === 0) {
+      return;
+    }
+    containers.forEach((container) => {
+      const code = container.getAttribute('data-dm-code') || '';
+      const trimmed = code.trim();
+      if (!trimmed) {
+        return;
+      }
+      if (typeof window !== 'undefined' && typeof window.DATAMatrix === 'function') {
+        try {
+          const svg = window.DATAMatrix({ msg: trimmed, dim: 72, pad: 1, pal: ['#000', '#fff'] });
+          const existing = container.querySelector('svg');
+          if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+          }
+          if (svg) {
+            svg.setAttribute('role', 'img');
+            svg.setAttribute('aria-label', `Datamatrix ${trimmed}`);
+            container.prepend(svg);
+            container.classList.add('is-rendered');
+          }
+        } catch (err) {
+          console.warn('Impossibile generare il DataMatrix in locale', err);
+        }
+      }
+    });
+  }
+
+  renderDataMatrix();
+  window.addEventListener('load', renderDataMatrix);
+
+  let dmEnsureAttempts = 0;
+  const dmEnsureMax = 15;
+  (function ensureMatrixReady(){
+    if (typeof window !== 'undefined' && typeof window.DATAMatrix === 'function') {
+      renderDataMatrix();
+      return;
+    }
+    dmEnsureAttempts += 1;
+    if (dmEnsureAttempts < dmEnsureMax) {
+      setTimeout(ensureMatrixReady, 150);
+    }
+  })();
+
+  const downloadButtons = document.querySelectorAll('.dm-download');
+  if (downloadButtons && downloadButtons.length > 0) {
+    downloadButtons.forEach((btn) => {
+      btn.addEventListener('click', function(evt){
+        evt.preventDefault();
+        const baseName = btn.getAttribute('data-base-name') || 'datamatrix';
+        const trimmedName = baseName ? baseName.toString().trim() : '';
+        const safeBase = trimmedName ? trimmedName.replace(/[^a-zA-Z0-9-_]+/g, '_') : 'datamatrix';
+        const encoded = btn.getAttribute('data-dm-image') || '';
+        const payload = btn.getAttribute('data-dm-code') || '';
+        const row = btn.closest('tr');
+        const container = row ? row.querySelector('.dm-container') : null;
+        const svg = container ? container.querySelector('svg') : null;
+        if (svg) {
+          svgToPngDataUrl(svg, 360).then((dataUrl) => {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = safeBase + '-datamatrix.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }).catch((err) => {
+            console.error('Unable to export generated DataMatrix', err);
+          });
+          return;
+        }
+        if (encoded) {
+          try {
+            const blob = base64ToBlob(encoded);
+            const fileName = safeBase + '-datamatrix.png';
+            triggerDownload(blob, fileName);
+            return;
+          } catch (err) {
+            console.error('Unable to decode pre-rendered DataMatrix', err);
+          }
+        }
+        if (payload) {
+          const fallbackBlob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
+          const fallbackName = safeBase + '-datamatrix.txt';
+          triggerDownload(fallbackBlob, fallbackName);
+          return;
+        }
+        alert('Impossibile scaricare il Datamatrix.');
+      });
+    });
+  }
+});

@@ -22,6 +22,8 @@
   {# Back button: return to the appropriate archive view depending on the source. #}
   {% if from_page == 'assemblies' %}
     <a href="{{ url_for('inventory.product_archive_assemblies_view', product_id=product_id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
+  {% elif from_page == 'history' %}
+    <a href="{{ url_for('inventory.archive') }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
   {% else %}
     <a href="{{ url_for('inventory.product_archive_view', product_id=product_id) }}" class="btn ghost small" style="margin-bottom:8px;">← Indietro</a>
   {% endif %}

@@ -83,10 +83,12 @@
           <span class="production-box-stat-label">Caricati</span>
           <span class="production-box-stat-value">{{ loaded_items }}</span>
         </div>
-        <div class="production-box-stat">
-          <span class="production-box-stat-label">Da lavorare</span>
-          <span class="production-box-stat-value">{{ pending_items if pending_items > 0 else 0 }}</span>
-        </div>
+        {% if not is_completed and pending_items > 0 %}
+          <div class="production-box-stat">
+            <span class="production-box-stat-label">In lavorazione</span>
+            <span class="production-box-stat-value">{{ pending_items }}</span>
+          </div>
+        {% endif %}
       </div>
 
       <div class="workflow-block">
@@ -222,28 +224,24 @@
           </div>
         {% endif %}
       </div>
+      {% if allow_build %}
+        <div class="workflow-block build-inline" id="build-inline-panel" hidden>
+          <div class="workflow-block-header">
+            <h4>Procedura di costruzione</h4>
+            <button id="btn-close-build" type="button" class="btn ghost small">Chiudi</button>
+          </div>
+          <div class="build-inline-body">
+            <div class="build-inline-loader" role="status" aria-live="polite">
+              <div class="workflow-spinner" role="presentation"></div>
+              <p>Caricamento interfaccia…</p>
+            </div>
+            <iframe id="buildFrame" src="" class="build-inline-frame" title="Procedura costruzione"></iframe>
+          </div>
+        </div>
+      {% endif %}
     </div>
   </div>
 </section>
-
-{% if allow_build %}
-<div id="buildModal" class="workflow-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="buildModalTitle" aria-busy="false">
-  <div class="workflow-modal-dialog">
-    <div class="workflow-modal-header">
-      <div class="workflow-modal-copy">
-        <span class="workflow-modal-eyebrow">Procedura guidata</span>
-        <h3 id="buildModalTitle" class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
-      </div>
-      <button id="btn-close-build" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
-    </div>
-    <div class="workflow-modal-loader" aria-hidden="true">
-      <div class="workflow-spinner" role="presentation"></div>
-      <p>Caricamento interfaccia…</p>
-    </div>
-    <iframe id="buildFrame" src="" class="workflow-modal-frame" title="Procedura costruzione"></iframe>
-  </div>
-</div>
-{% endif %}
 
 {% endblock %}
 

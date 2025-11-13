@@ -32,6 +32,19 @@ from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document
 from ...models import ComponentMaster
 from ...checklist import load_checklist
 
+# Shared mapping of document folder slugs to human readable titles.  Used when
+# presenting document requirements both in the standalone component load view
+# and inside the production box page.
+_DOC_LABEL_MAP: dict[str, str] = {
+    'qualita': 'Modulo certificazione qualità',
+    '3_1_materiale': 'Certificato 3.1 materiale',
+    'step_tavole': 'Tavole di montaggio',
+    'funzionamento': 'Verifica di funzionamento',
+    'istruzioni': 'Istruzioni di montaggio',
+    'ddt_fornitore': 'DDT fornitore',
+    'altro': 'Documentazione aggiuntiva',
+}
+
 # Cache for mapping upload filename prefixes to the first matching file.  Building
 # this map requires scanning the ``static/uploads`` directory which can contain
 # hundreds of images.  Recreating the map for every request causes noticeable
@@ -196,8 +209,8 @@ def _generate_dm_image(code: str) -> str:
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
         else:
-            # Roughly estimate width/height if no font metrics are
-            # available.  Each character is assumed ~6 px wide and
+        # Roughly estimate width/height if no font metrics are
+        # available.  Each character is assumed ~6 px wide and
             # 10 px tall.
             max_len = max((len(p) for p in parts), default=0)
             text_width = min(max_len * 6, size)
@@ -212,6 +225,83 @@ def _generate_dm_image(code: str) -> str:
         # In case of any unforeseen error return an empty string.  The
         # calling code will display the payload as plain text.
         return ''
+
+
+def _build_component_doc_definitions(part: Structure) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Return document field definitions for component load workflows."""
+
+    doc_defs: list[dict[str, str]] = []
+    doc_label_map = dict(_DOC_LABEL_MAP)
+    idx_counter = 1
+
+    try:
+        checklist_data = load_checklist()
+    except Exception:
+        checklist_data = {}
+
+    if isinstance(checklist_data, dict):
+        raw_entries = checklist_data.get(str(part.id), [])
+    else:
+        raw_entries = []
+
+    if isinstance(raw_entries, list):
+        for raw in raw_entries:
+            if not isinstance(raw, str):
+                continue
+            safe_path = raw.replace('\\', '/').strip()
+            if not safe_path:
+                continue
+            lowered = safe_path.lower()
+            doc_type = 'altro'
+            for key in doc_label_map.keys():
+                if f"/{key.lower()}/" in lowered:
+                    doc_type = key
+                    break
+            field_name = f"{doc_type}_{part.id}_{idx_counter}"
+            idx_counter += 1
+            filename = os.path.basename(safe_path)
+            title = doc_label_map.get(doc_type, doc_type.replace('_', ' ').title())
+            display_name = f"{title} ({filename})" if filename else title
+            doc_defs.append({
+                'type': doc_type,
+                'field_name': field_name,
+                'original_path': safe_path,
+                'display_name': display_name,
+                'filename': filename,
+            })
+
+    if not doc_defs:
+        try:
+            safe_name = secure_filename(part.name) or f"id_{part.id}"
+            doc_root = os.path.join(current_app.static_folder, 'documents', safe_name)
+            if os.path.isdir(doc_root):
+                for dt_name in sorted(os.listdir(doc_root)):
+                    dt_path = os.path.join(doc_root, dt_name)
+                    if not os.path.isdir(dt_path):
+                        continue
+                    for fname in sorted(os.listdir(dt_path)):
+                        file_path = os.path.join(dt_path, fname)
+                        if not os.path.isfile(file_path):
+                            continue
+                        try:
+                            rel_path = os.path.relpath(file_path, current_app.static_folder)
+                        except Exception:
+                            rel_path = os.path.join('documents', safe_name, dt_name, fname)
+                        doc_type = dt_name.lower()
+                        field_name = f"{doc_type}_{part.id}_{idx_counter}"
+                        idx_counter += 1
+                        display_name = f"{doc_label_map.get(doc_type, doc_type)} ({fname})"
+                        doc_defs.append({
+                            'type': doc_type,
+                            'field_name': field_name,
+                            'original_path': rel_path,
+                            'display_name': display_name,
+                            'filename': fname,
+                        })
+        except Exception:
+            pass
+
+    return doc_defs, doc_label_map
 
 
 def _dedupe_docs(docs: List[tuple[str, Any]]) -> List[tuple[str, Any]]:
@@ -3836,6 +3926,8 @@ def load_component(part_id: int):
     # box) should be marked as loaded.  Pass this through to the
     # template to adjust behaviour.
     item_id_param = request.args.get('item_id')
+    if not item_id_param:
+        item_id_param = request.form.get('item_id')
     # Determine where to return after completion.  Use query parameter, then
     # referrer, otherwise fall back to the appropriate list page based on
     # component type.
@@ -3848,101 +3940,7 @@ def load_component(part_id: int):
             back_url = url_for('inventory.list_commercial')
         else:
             back_url = url_for('inventory.index')
-    # Load flagged documents for this structure
-    try:
-        checklist_data = load_checklist()
-    except Exception:
-        checklist_data = {}
-    flagged_paths: list[str] = checklist_data.get(str(part.id), []) if isinstance(checklist_data, dict) else []
-    # Keep only string paths.  Include any prefix (e.g. documents or tmp_components)
-    # so that all flagged documents appear in the load interface.  The
-    # `products.download_file` endpoint will enforce that the resolved path
-    # remains within the static directory, preventing traversal outside
-    # of permitted locations.
-    flagged_paths = [p for p in flagged_paths if isinstance(p, str)]
-    # Mapping of document types to human-readable labels
-    doc_label_map: dict[str, str] = {
-        'qualita': 'Modulo Cert. qualità',
-        '3_1_materiale': '3.1 Materiale',
-        'step_tavole': 'Step/tavola',
-        'funzionamento': 'Verifica funzionamento',
-        'istruzioni': 'Montaggio istruzioni',
-        'ddt_fornitore': 'DDT fornitore',
-        'altro': 'Altro'
-    }
-    # Build document definitions from flagged paths.  Group by type and
-    # include multiple entries when different documents belong to the same
-    # category.  Each definition includes a unique form field name and the
-    # original relative path used for downloading.
-    doc_defs: list[dict[str, str]] = []
-    idx_counter = 1
-    for path in flagged_paths:
-        # Determine document type from path segment
-        doc_type = 'altro'
-        norm = path.replace('\\', '/').lower()
-        for key in doc_label_map.keys():
-            if f"/{key}/" in norm:
-                doc_type = key
-                break
-        # Field name must be unique for each doc
-        field_name = f"{doc_type}_{part.id}_{idx_counter}"
-        idx_counter += 1
-        # Build a display label including the file name to help users
-        file_name = os.path.basename(path)
-        display_name = f"{doc_label_map.get(doc_type, doc_type)} ({file_name})"
-        doc_defs.append({
-            'type': doc_type,
-            'field_name': field_name,
-            'original_path': path,
-            'display_name': display_name
-        })
-
-    # -------------------------------------------------------------------------
-    # When no documents are flagged for this component, attempt to surface
-    # previously uploaded documents stored under the component's directory in
-    # the static ``documents`` folder.  This ensures that parts without
-    # checklist entries still present a "carica/scarica" interface similar to
-    # commercial components.  We scan ``static/documents/<component>/<type>``
-    # and create a doc_def entry for each file discovered.  Only execute this
-    # logic when no flagged docs exist to avoid duplicating checklist items.
-    # Each resulting doc_def uses a unique field name and references the
-    # existing file for the download link.  If multiple files are present
-    # within the same doc_type folder, individual entries are created for
-    # each file.
-    if not doc_defs:
-        try:
-            safe_name = secure_filename(part.name) or f"id_{part.id}"
-            doc_root = os.path.join(current_app.static_folder, 'documents', safe_name)
-            if os.path.isdir(doc_root):
-                # Iterate over document type folders
-                for dt_name in sorted(os.listdir(doc_root)):
-                    dt_path = os.path.join(doc_root, dt_name)
-                    if not os.path.isdir(dt_path):
-                        continue
-                    for fname in sorted(os.listdir(dt_path)):
-                        file_path = os.path.join(dt_path, fname)
-                        if not os.path.isfile(file_path):
-                            continue
-                        # Build relative path for download (relative to static folder)
-                        try:
-                            rel_path = os.path.relpath(file_path, current_app.static_folder)
-                        except Exception:
-                            # Fallback: use filename only
-                            rel_path = os.path.join('documents', safe_name, dt_name, fname)
-                        # Determine human readable label and unique field name
-                        doc_type = dt_name.lower()
-                        field_name = f"{doc_type}_{part.id}_{idx_counter}"
-                        idx_counter += 1
-                        display_name = f"{doc_label_map.get(doc_type, doc_type)} ({fname})"
-                        doc_defs.append({
-                            'type': doc_type,
-                            'field_name': field_name,
-                            'original_path': rel_path,
-                            'display_name': display_name
-                        })
-        except Exception:
-            # If scanning fails, leave doc_defs unchanged
-            pass
+    doc_defs, doc_label_map = _build_component_doc_definitions(part)
     if request.method == 'POST':
         # Parse quantity; default to 1 if missing or invalid
         qty_str = request.form.get('quantity', '1')
@@ -3960,6 +3958,7 @@ def load_component(part_id: int):
                 back_url=back_url,
                 embedded=embedded_flag,
                 box_id=box_id_param,
+                item_id=item_id_param,
                 docs_ready=len(doc_defs) == 0
             )
         # Validate that all required documents are uploaded
@@ -3979,6 +3978,7 @@ def load_component(part_id: int):
                 back_url=back_url,
                 embedded=embedded_flag,
                 box_id=box_id_param,
+                item_id=item_id_param,
                 docs_ready=len(doc_defs) == 0
             )
         # Base directory under static for documents
@@ -9634,17 +9634,50 @@ def production_box_view(box_id: int):
         required_docs: list[dict[str, str]] = []
         if root_structure:
             from ...checklist import load_checklist
+
+            # Human readable titles for known document folders.  The keys match the
+            # directory names used under ``static/documents`` and ``static/tmp_components``.
+            doc_label_map: dict[str, str] = dict(_DOC_LABEL_MAP)
+
             data = load_checklist()
             sid = str(root_structure.id)
             if sid in data:
                 for rel_path in data[sid]:
-                    # Split the path to show only the filename
-                    name = os.path.basename(rel_path)
-                    required_docs.append({'path': rel_path, 'name': name})
+                    safe_path = (rel_path or '').replace('\\', '/').strip()
+                    if not safe_path:
+                        continue
+                    lowered = safe_path.lower()
+                    doc_type = 'altro'
+                    for key in doc_label_map.keys():
+                        if f"/{key.lower()}/" in lowered:
+                            doc_type = key
+                            break
+                    title = doc_label_map.get(doc_type, doc_type.replace('_', ' ').title())
+                    filename = os.path.basename(safe_path)
+                    required_docs.append({
+                        'path': safe_path,
+                        'title': title,
+                        'filename': filename,
+                        'type': doc_type,
+                    })
     except Exception:
         required_docs = []
     # Attach the required documents list to the box object
     setattr(box, 'required_docs', required_docs)
+
+    load_doc_defs: list[dict[str, str]]
+    load_doc_label_map: dict[str, str]
+    if root_structure:
+        try:
+            load_doc_defs, load_doc_label_map = _build_component_doc_definitions(root_structure)
+        except Exception:
+            load_doc_defs, load_doc_label_map = [], dict(_DOC_LABEL_MAP)
+    else:
+        load_doc_defs, load_doc_label_map = [], dict(_DOC_LABEL_MAP)
+
+    setattr(box, 'load_doc_defs', load_doc_defs)
+    setattr(box, 'load_doc_label_map', load_doc_label_map)
+    setattr(box, 'load_docs_required', bool(load_doc_defs))
 
     # ---------------------------------------------------------------------
     # Determine whether batch (lot) management is enabled for the root
@@ -9701,5 +9734,20 @@ def production_box_view(box_id: int):
     except Exception:
         lot_mgmt_flag = False
     setattr(box, 'lot_management', lot_mgmt_flag)
+
+    # Pre-render a DataMatrix image (PNG encoded in base64) for each stock item so that
+    # the frontend can display and download the code without relying on the fragile
+    # client-side SVG generator.  When generation fails the ``datamatrix_image``
+    # attribute is left as an empty string and the templates fall back to showing the
+    # plain text payload.
+    try:
+        for item in getattr(box, 'stock_items', []) or []:
+            code_val = getattr(item, 'datamatrix_code', '') or ''
+            image_data = _generate_dm_image(code_val)
+            setattr(item, 'datamatrix_image', image_data)
+            setattr(item, 'datamatrix_payload', code_val)
+    except Exception:
+        # Ignore failures and let the template rely on the textual fallback.
+        pass
 
     return render_template('inventory/production_box.html', box=box)

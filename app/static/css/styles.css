@@ -2590,10 +2590,11 @@ input.checklist-toggle:checked::before {
 
 .docs-cell {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
   gap: 6px;
+  height: 100%;
 }
 
 .docs-cell .btn {

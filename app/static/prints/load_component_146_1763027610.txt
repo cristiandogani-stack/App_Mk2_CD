@@ -1,0 +1,6 @@
+Componente: comp2 (ID: 146)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Modulo certificazione qualità (DB100_8.xlsx)
+ - Certificato 3.1 materiale (DB100_88.xlsx)
+ - Documentazione aggiuntiva (logo.png)

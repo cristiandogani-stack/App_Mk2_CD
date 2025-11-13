@@ -84,6 +84,18 @@
     </div>
     <div class="production-box-body">
       <div class="production-box-summary">
+        {% if box.stock_qty is not none %}
+          <div class="production-box-stat">
+            <span class="production-box-stat-label">Stock</span>
+            <span class="production-box-stat-value">{{ box.stock_qty }}</span>
+          </div>
+        {% endif %}
+        {% if box.available_to_build is not none %}
+          <div class="production-box-stat">
+            <span class="production-box-stat-label">Disponibili da costruire</span>
+            <span class="production-box-stat-value">{{ box.available_to_build }}</span>
+          </div>
+        {% endif %}
         <div class="production-box-stat">
           <span class="production-box-stat-label">Totale componenti</span>
           <span class="production-box-stat-value">{{ total_items }}</span>

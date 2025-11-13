@@ -677,6 +677,45 @@ def _calculate_reserved_assemblies() -> dict[int, int]:
     return reserved_counts
 
 
+def _calculate_reserved_products() -> dict[int, int]:
+    """Return a mapping of product IDs to units reserved in open boxes.
+
+    Finished products can be reserved either through dedicated PRODOTTO
+    boxes or via assembly reservations that ultimately build the same
+    product.  To avoid overcommitting stock we count stock items linked
+    to boxes that are still open (``APERTO``) or in progress
+    (``IN_CARICO``).  Only items that have not yet been completed are
+    considered reserved.  This ensures that once a box is fully loaded
+    and marked as completed the corresponding units return to the
+    available stock.
+
+    :return: Mapping from Product.id to the number of reserved units.
+    """
+    from ...models import ProductionBox
+
+    reserved: dict[int, int] = {}
+    try:
+        boxes = ProductionBox.query.filter(
+            ProductionBox.status.in_(['APERTO', 'IN_CARICO']),
+            ProductionBox.box_type.in_(['ASSIEME', 'PRODOTTO'])
+        ).all()
+    except Exception:
+        boxes = []
+    for box in boxes:
+        for item in getattr(box, 'stock_items', []) or []:
+            try:
+                product_id = item.product_id
+            except Exception:
+                product_id = None
+            if not product_id:
+                continue
+            status = (getattr(item, 'status', '') or '').upper()
+            if status in ('COMPLETATO', 'SCARTO', 'CARICATO'):
+                continue
+            reserved[product_id] = reserved.get(product_id, 0) + 1
+    return reserved
+
+
 def _assign_available_qty_recursive(structure: Structure, reserved_counts: dict[int, int]) -> None:
     """Decorate a Structure and its descendants with an available_qty attribute.
 
@@ -745,7 +784,7 @@ def _collect_root_assemblies() -> List[Structure]:
 # determine how many complete products can be produced from the current
 # inventory, we compute the ratio of on‑hand quantity to the required
 # quantity for each component and take the minimum across all components.
-def _calculate_product_stock(product: Product) -> int:
+def _calculate_product_stock(product: Product, reserved_counts: dict[int, int] | None = None) -> int:
     """Return the maximum number of complete products that can be built from stock.
 
     This helper considers only the immediate structures associated with a
@@ -808,7 +847,16 @@ def _calculate_product_stock(product: Product) -> int:
         return 0
     try:
         # The number of complete products equals the smallest integer ratio
-        return int(min(ratios))
+        available = int(min(ratios))
+        if reserved_counts:
+            try:
+                reserved = int(reserved_counts.get(product.id, 0))
+            except Exception:
+                reserved = 0
+            available -= reserved
+            if available < 0:
+                available = 0
+        return available
     except Exception:
         return 0
 
@@ -872,12 +920,21 @@ def index():
     """
     _recalculate_assemblies()
     products = Product.query.order_by(Product.name.asc()).all()
+    try:
+        reserved_products = _calculate_reserved_products()
+    except Exception:
+        reserved_products = {}
     product_cards: list[dict[str, object]] = []
     for product in products:
-        qty_complete = _calculate_product_stock(product)
+        qty_complete = _calculate_product_stock(product, reserved_products)
+        try:
+            stock_on_hand = int(product.quantity_in_stock or 0)
+        except Exception:
+            stock_on_hand = 0
         product_cards.append({
             'product': product,
-            'quantity_complete': qty_complete
+            'quantity_complete': qty_complete,
+            'stock_on_hand': stock_on_hand
         })
     return render_template('inventory/home.html', product_cards=product_cards,
                           active_tab='products')
@@ -906,6 +963,10 @@ def list_products():
     # Fetch all products ordered alphabetically by name so that users
     # can quickly locate a product.
     products = Product.query.order_by(Product.name.asc()).all()
+    try:
+        reserved_products = _calculate_reserved_products()
+    except Exception:
+        reserved_products = {}
     product_trees: list[dict[str, object]] = []
     for product in products:
         # Load all components associated with this product.  Each
@@ -998,7 +1059,7 @@ def list_products():
         # stock levels of the underlying structures.  When a product has
         # no components or an error occurs the value defaults to zero.
         try:
-            buildable_qty = _calculate_product_stock(product)
+            buildable_qty = _calculate_product_stock(product, reserved_products)
         except Exception:
             buildable_qty = 0
         product_trees.append({'product': product, 'rows_tree': rows_tree, 'buildable_qty': buildable_qty})

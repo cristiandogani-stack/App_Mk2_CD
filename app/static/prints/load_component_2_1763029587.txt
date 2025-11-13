@@ -1,0 +1,4 @@
+Componente: comp1 (ID: 2)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Modulo certificazione qualità (swt-osversion-win32-4969r18.dll)

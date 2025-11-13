@@ -1,0 +1,4 @@
+Componente: comp2 (ID: 3)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Modulo certificazione qualità (COLLEGAMENTI_ARGAL.txt)

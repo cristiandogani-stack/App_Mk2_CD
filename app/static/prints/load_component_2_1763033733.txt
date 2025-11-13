@@ -1,0 +1,4 @@
+Componente: comp1 (ID: 2)
+Quantità caricata: 1.0
+Documenti caricati:
+ - Tavole di montaggio (DB100_88.xlsx)

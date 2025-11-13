@@ -14,7 +14,8 @@
   {%- set ep = request.endpoint or '' -%}
   {%- set bp = ep.split('.')|first -%}
   {%- set prefix = 'Produzione' if bp == 'production' else 'Magazzino' -%}
-  {{ prefix }} – Box {{ box.code }}
+  {%- set hero_title = (box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Produzione')) -%}
+  {{ prefix }} – {{ hero_title }}
 {% endblock %}
 
 {% block content %}
@@ -23,9 +24,9 @@
 {% set allow_load = (not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] and box.lot_management) %}
 {% set show_row_actions = (not box.lot_management and box.box_type not in ['ASSIEME', 'PRODOTTO'] and not is_completed) %}
 {% set load_base_url = url_for('inventory.load_component', part_id=box.root_structure.id) if box.root_structure else None %}
-{% set origin_url = request.referrer or url_for('production.index') %}
-{% set hero_label = 'Box assieme' if box.box_type == 'ASSIEME' else 'Box prodotto' if box.box_type == 'PRODOTTO' else 'Box commerciale' if box.box_type == 'COMMERCIALE' else 'Box componenti' %}
-{% set hero_name = box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Box ' ~ box.code) %}
+{% set origin_url = url_for('production.index') %}
+{% set hero_label = 'Assieme' if box.box_type == 'ASSIEME' else 'Prodotto' if box.box_type == 'PRODOTTO' else 'Commerciale' if box.box_type == 'COMMERCIALE' else 'Componenti' %}
+{% set hero_name = box.root_structure.name if box.root_structure and box.root_structure.name else (box.product_name if box.product_name else 'Produzione') %}
 {% set total_items = box.stock_items|length %}
 {% set loaded_items = box.stock_items|selectattr('status', 'equalto', 'COMPLETATO')|list|length %}
 {% set pending_items = total_items - loaded_items %}
@@ -44,8 +45,8 @@
       <div class="build-complete-card">
         <div class="build-complete-icon" aria-hidden="true">✅</div>
         <h3 class="build-complete-title" data-build-complete-message>Costruzione completata</h3>
-        <p class="build-complete-copy" data-build-complete-detail>Il box verrà chiuso e aggiornato automaticamente.</p>
-        <button type="button" class="btn primary" data-build-complete-dismiss>Chiudi ora</button>
+        <p class="build-complete-copy" data-build-complete-detail>Ti riportiamo all'area produzione.</p>
+        <button type="button" class="btn primary" data-build-complete-dismiss>Esci</button>
       </div>
     </div>
     <div class="workflow-hero">
@@ -63,13 +64,12 @@
         <div class="workflow-hero-copy">
           <span class="workflow-eyebrow">{{ hero_label }}</span>
           <h1 class="workflow-title">{{ hero_name }}</h1>
-          <p class="workflow-subtitle">Codice box {{ box.code }}</p>
         </div>
       </div>
       <div class="workflow-hero-actions">
         <span class="workflow-indicator">{{ '🟢 Pronto' if is_completed else '🔴 In attesa' }}</span>
         <div class="workflow-hero-buttons">
-          <a href="{{ origin_url }}" class="btn ghost small back-link" data-back-link>← Indietro</a>
+          <a href="{{ origin_url }}" class="btn ghost small back-link" data-back-link>Esci</a>
         </div>
       </div>
     </div>
@@ -89,42 +89,6 @@
             <span class="production-box-stat-value">{{ pending_items }}</span>
           </div>
         {% endif %}
-      </div>
-
-      <div class="workflow-block documents-block">
-      {% if not (allow_load and box.box_type not in ['ASSIEME', 'PRODOTTO']) %}
-        {% if box.required_docs and box.required_docs|length > 0 %}
-          <div class="document-section">
-            {% for doc in box.required_docs %}
-              {% set doc_path = doc.path if doc.path else None %}
-              {% set doc_title = doc.title if doc.title else 'Documento' %}
-              {% set doc_filename = doc.filename if doc.filename else (doc_path.split('/')[-1] if doc_path else '') %}
-              <div class="document-card">
-                <div class="document-card-header">
-                  <div class="document-card-titles">
-                    <span class="document-card-title">{{ doc_title }}</span>
-                    {% if doc_filename %}
-                      <span class="document-card-filename" title="{{ doc_filename }}">{{ doc_filename }}</span>
-                    {% endif %}
-                  </div>
-                  <div class="document-card-meta">
-                    {% if doc_path %}
-                      <a href="{{ url_for('static', filename=doc_path) }}"
-                         class="btn ghost small"
-                         download="{{ doc_filename or doc_title }}">Scarica</a>
-                    {% else %}
-                      <span class="muted" style="white-space:nowrap;">—</span>
-                    {% endif %}
-                  </div>
-                </div>
-                <div class="document-card-body"></div>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="muted" style="margin:0;">Nessun documento selezionato nella checklist per questo box.</p>
-        {% endif %}
-      {% endif %}
       </div>
 
       {% if box.root_structure and not is_completed and box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
@@ -196,7 +160,7 @@
       {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
       <div class="workflow-block">
         <div class="workflow-block-header">
-          <h4>Componenti nel box</h4>
+          <h4>Componenti</h4>
           {% if is_completed %}
             <span class="status-pill status-ready">Completato</span>
           {% else %}
@@ -204,7 +168,7 @@
           {% endif %}
         </div>
         {% if total_items == 0 %}
-          <p class="muted" style="margin:0;">Il box è vuoto.</p>
+          <p class="muted" style="margin:0;">Nessun elemento presente.</p>
         {% elif visible_items|length == 0 %}
           <p class="muted" style="margin:0;">Tutti i componenti sono stati caricati.</p>
         {% else %}

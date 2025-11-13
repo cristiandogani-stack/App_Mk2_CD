@@ -110,13 +110,8 @@ document.addEventListener('DOMContentLoaded', function(){
 
   if (backLink) {
     backLink.addEventListener('click', (evt) => {
-      if (document.referrer) {
-        evt.preventDefault();
-        window.location.href = document.referrer;
-      } else if (window.history.length > 1) {
-        evt.preventDefault();
-        window.history.back();
-      }
+      evt.preventDefault();
+      navigateAfterBuild(backUrl);
     });
   }
 
@@ -132,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function(){
   function showBuildCompletion(status, payload) {
     const detailText = payload && payload.detail
       ? payload.detail
-      : 'Aggiorniamo il box e torniamo alla panoramica.';
+      : "Ti riportiamo all'area produzione.";
     const titleText = payload && payload.message
       ? payload.message
       : (status === 'success' ? 'Costruzione completata' : 'Operazione aggiornata');

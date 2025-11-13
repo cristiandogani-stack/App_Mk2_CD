@@ -34,7 +34,9 @@
 {%   set visible_items = box.stock_items|rejectattr('status', 'equalto', 'COMPLETATO')|list %}
 {% endif %}
 
-<section class="section workflow-section production-box-section">
+<section class="section workflow-section production-box-section"
+         data-box-id="{{ box.id }}"
+         data-load-base="{{ load_base_url or '' }}">
   <div class="glass workflow-container production-box-container">
     <div class="workflow-hero">
       <div class="workflow-hero-main">
@@ -105,7 +107,7 @@
                   <span class="document-card-title">{{ doc_name }}</span>
                   <div class="document-card-meta">
                     {% if doc_path %}
-                      <a href="{{ url_for('static', filename=doc_path) }}" target="_blank" class="btn ghost small">Scarica</a>
+                      <a href="{{ url_for('static', filename=doc_path) }}" class="btn ghost small" download="{{ doc_name }}">Scarica</a>
                     {% else %}
                       <span class="muted" style="white-space:nowrap;">—</span>
                     {% endif %}
@@ -161,7 +163,23 @@
                   <tr>
                     <td data-title="#">{{ row.index }}</td>
                     <td data-title="DataMatrix">
-                      <div class="dm-container" data-code="{{ item.datamatrix_code | e }}"></div>
+                      <div class="dm-container"
+                           data-dm-code="{{ (item.datamatrix_payload or '') | e }}">
+                        {% if item.datamatrix_image %}
+                          <img src="data:image/png;base64,{{ item.datamatrix_image }}"
+                               alt="Datamatrix {{ item.product.code or item.product.name }}"
+                               loading="lazy"
+                               class="dm-image dm-image-fallback"
+                               data-dm-image="{{ item.datamatrix_image }}">
+                        {% endif %}
+                        {% if not item.datamatrix_image %}
+                          {% if item.datamatrix_payload %}
+                            <span class="dm-fallback" title="{{ item.datamatrix_payload }}">{{ item.datamatrix_payload }}</span>
+                          {% else %}
+                            <span class="dm-fallback muted">—</span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
                     </td>
                     <td data-title="Elemento">
                       <div class="production-box-item">
@@ -175,7 +193,11 @@
                       <span class="status-pill {{ status_class }}">{{ item.status }}</span>
                     </td>
                     <td data-title="Download" class="text-right">
-                      <button class="btn small ghost dm-download">Scarica&nbsp;Datamatrix</button>
+                      <button class="btn small ghost dm-download"
+                              type="button"
+                              data-dm-image="{{ item.datamatrix_image or '' }}"
+                              data-dm-code="{{ (item.datamatrix_payload or '') | e }}"
+                              data-base-name="{{ item.product.code or 'datamatrix' }}">Scarica&nbsp;Datamatrix</button>
                     </td>
                     {% if show_row_actions %}
                       <td data-title="Azioni" class="text-right">
@@ -197,287 +219,51 @@
 </section>
 
 {% if allow_build %}
-<div id="buildModal" class="workflow-modal" style="display:none;">
+<div id="buildModal" class="workflow-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="buildModalTitle" aria-busy="false">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
-      <h3 class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
+      <div class="workflow-modal-copy">
+        <span class="workflow-modal-eyebrow">Procedura guidata</span>
+        <h3 id="buildModalTitle" class="workflow-modal-title">Costruisci {{ hero_name }}</h3>
+      </div>
       <button id="btn-close-build" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
-    <iframe id="buildFrame" src="" class="workflow-modal-frame"></iframe>
+    <div class="workflow-modal-loader" aria-hidden="true">
+      <div class="workflow-spinner" role="presentation"></div>
+      <p>Caricamento interfaccia…</p>
+    </div>
+    <iframe id="buildFrame" src="" class="workflow-modal-frame" title="Procedura costruzione"></iframe>
   </div>
 </div>
 {% endif %}
 
 {% if box.box_type not in ['ASSIEME', 'PRODOTTO'] %}
-<div id="loadModal" class="workflow-modal" style="display:none;" data-base-url="{{ load_base_url or '' }}" aria-hidden="true">
+<div id="loadModal" class="workflow-modal"
+     style="display:none;"
+     data-base-url="{{ load_base_url or '' }}"
+     data-box-id="{{ box.id }}"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="loadModalTitle"
+     aria-hidden="true"
+     aria-busy="false">
   <div class="workflow-modal-dialog">
     <div class="workflow-modal-header">
-      <h3 class="workflow-modal-title">Carica {{ hero_name }}</h3>
+      <div class="workflow-modal-copy">
+        <span class="workflow-modal-eyebrow">Caricamento documenti</span>
+        <h3 id="loadModalTitle" class="workflow-modal-title">Carica {{ hero_name }}</h3>
+      </div>
       <button id="btn-close-load" type="button" class="btn ghost small workflow-modal-close">Chiudi</button>
     </div>
-    <iframe id="loadFrame" src="" class="workflow-modal-frame"></iframe>
+    <div class="workflow-modal-loader" aria-hidden="true">
+      <div class="workflow-spinner" role="presentation"></div>
+      <p>Caricamento interfaccia…</p>
+    </div>
+    <iframe id="loadFrame" src="" class="workflow-modal-frame" title="Pannello caricamento"></iframe>
   </div>
 </div>
 {% endif %}
 
 {% endblock %}
 
-{# Load the client-side DataMatrix library.  This script defines a global
-   `DATAMatrix` function which creates SVG elements representing the
-   specified message.  The library must be loaded before the code
-   below invokes `DATAMatrix` to render and download DataMatrix codes. #}
-<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}"></script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-  const loadModal = document.getElementById('loadModal');
-  const loadFrame = document.getElementById('loadFrame');
-  const defaultLoadUrl = loadModal ? loadModal.getAttribute('data-base-url') : '';
-
-  function resetLoadModal(){
-    if (loadFrame) {
-      loadFrame.onload = null;
-      loadFrame.src = '';
-    }
-    if (loadModal) {
-      loadModal.style.display = 'none';
-      loadModal.setAttribute('aria-hidden', 'true');
-    }
-  }
-
-  function attachLoadWatcher(){
-    if (!loadFrame || !loadModal) {
-      return;
-    }
-    loadFrame.onload = function(){
-      try {
-        const loc = loadFrame.contentWindow.location;
-        const href = loc && loc.href ? loc.href : '';
-        const path = loc && loc.pathname ? loc.pathname : '';
-        if (path && !path.startsWith('/inventory/load') && !(href.startsWith('about:'))) {
-          resetLoadModal();
-          window.location.reload();
-        }
-      } catch (err) {
-        // Ignore errors caused by blank or cross‑origin frames
-      }
-    };
-  }
-
-  function resolveLoadUrl(trigger, options){
-    const candidate = (options && options.baseUrl) || (trigger ? trigger.getAttribute('data-load-url') : null) || defaultLoadUrl;
-    if (!candidate) {
-      return '';
-    }
-    let finalUrl = '';
-    const params = new URLSearchParams();
-    params.set('embedded', '1');
-    params.set('box_id', '{{ box.id }}');
-    if (options && options.itemId) {
-      params.set('item_id', options.itemId);
-    }
-    if (options && options.autoSelect) {
-      params.set('auto_select', '1');
-    }
-    try {
-      const url = new URL(candidate, window.location.origin);
-      params.forEach(function(value, key){
-        url.searchParams.set(key, value);
-      });
-      finalUrl = url.pathname + url.search;
-      if (url.hash) {
-        finalUrl += url.hash;
-      }
-    } catch (err) {
-      const sep = candidate.indexOf('?') === -1 ? '?' : '&';
-      finalUrl = candidate + sep + params.toString();
-    }
-    return finalUrl;
-  }
-
-  function openLoadModal(trigger, options){
-    if (!loadModal || !loadFrame) {
-      return;
-    }
-    const targetUrl = resolveLoadUrl(trigger, options);
-    if (!targetUrl) {
-      alert('Impossibile aprire il caricamento per questo box.');
-      return;
-    }
-    attachLoadWatcher();
-    loadFrame.src = targetUrl;
-    loadModal.style.display = 'flex';
-    loadModal.setAttribute('aria-hidden', 'false');
-  }
-
-  const btnOpenLoad = document.getElementById('btn-open-load');
-  if (btnOpenLoad) {
-    btnOpenLoad.addEventListener('click', function(){
-      openLoadModal(btnOpenLoad, { autoSelect: true });
-    });
-  }
-
-  const btnCloseLoad = document.getElementById('btn-close-load');
-  if (btnCloseLoad) {
-    btnCloseLoad.addEventListener('click', function(){
-      resetLoadModal();
-    });
-  }
-  // For assembly and product boxes, open the build modal when the Costruisci button is clicked
-  const btnBuild = document.getElementById('btn-open-build');
-  if (btnBuild) {
-    btnBuild.addEventListener('click', function(){
-      const modal = document.getElementById('buildModal');
-      const iframe = document.getElementById('buildFrame');
-      if (modal && iframe) {
-        // Determine the build URL from the data attribute on the button.
-        const buildUrl = btnBuild.getAttribute('data-build-url');
-        if (!buildUrl) return;
-        iframe.src = buildUrl;
-        modal.style.display = 'flex';
-        modal.setAttribute('aria-hidden', 'false');
-        // When the iframe finishes loading, check whether it has navigated
-        // away from the internal build pages (/inventory/build or
-        // /inventory/build_product).  When the path is different we assume
-        // the build has completed and reload the parent page.
-        iframe.onload = function() {
-          try {
-            const loc = iframe.contentWindow.location;
-            const href = loc && loc.href ? loc.href : '';
-            const path = loc && loc.pathname ? loc.pathname : '';
-            if (path && !path.startsWith('/inventory/build') && !path.startsWith('/inventory/build_product') && !(href.startsWith('about:'))) {
-              iframe.onload = null;
-              modal.style.display = 'none';
-              modal.setAttribute('aria-hidden', 'true');
-              iframe.src = '';
-              alert('Costruzione completata con successo');
-              window.location.reload();
-            }
-          } catch (err) {
-            // Ignore cross-origin or other errors
-          }
-        };
-      }
-    });
-  }
-  // Close the build modal
-  const btnCloseBuild = document.getElementById('btn-close-build');
-  if (btnCloseBuild) {
-    btnCloseBuild.addEventListener('click', function(){
-      const modal = document.getElementById('buildModal');
-      const iframe = document.getElementById('buildFrame');
-      if (iframe) {
-        iframe.onload = null;
-        iframe.src = '';
-      }
-      if (modal) {
-        modal.style.display = 'none';
-        modal.setAttribute('aria-hidden', 'true');
-      }
-    });
-  }
-
-  // -----------------------------------------------------------------------------
-  // DataMatrix generation and download functionality
-  // -----------------------------------------------------------------------------
-  const dmContainers = document.querySelectorAll('.dm-container');
-  dmContainers.forEach(function(container) {
-    const code = container.getAttribute('data-code');
-    if (code) {
-      try {
-        const svg = DATAMatrix({ msg: code, dim: 60, pad: 1, pal: ['#000', '#fff'] });
-        container.innerHTML = '';
-        container.appendChild(svg);
-      } catch (err) {
-        console.error('Failed to generate DataMatrix for', code, err);
-        container.textContent = code;
-      }
-    }
-  });
-
-  const perItemButtons = document.querySelectorAll('.load-item');
-  if (perItemButtons && perItemButtons.length > 0) {
-    perItemButtons.forEach(function(btn) {
-      btn.addEventListener('click', function(evt) {
-        evt.stopPropagation();
-        const itemId = this.getAttribute('data-item-id');
-        if (itemId) {
-          openLoadModal(this, { itemId: itemId, autoSelect: true });
-        }
-      });
-    });
-  }
-
-  // Convert an SVG element to a PNG data URL using a canvas.  The
-  // returned promise resolves to a data URL representing the PNG.  This
-  // helper is used when downloading the DataMatrix image.
-  function svgToPngDataUrl(svgElement, size) {
-    return new Promise(function(resolve, reject) {
-      try {
-        const svgString = new XMLSerializer().serializeToString(svgElement);
-        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        const canvas = document.createElement('canvas');
-        const rect = svgElement.getBoundingClientRect();
-        const width = size || rect.width || 120;
-        const height = size || rect.height || 120;
-        canvas.width = width;
-        canvas.height = height;
-        img.onload = function() {
-          const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, width, height);
-          ctx.drawImage(img, 0, 0, width, height);
-          URL.revokeObjectURL(url);
-          try {
-            const pngData = canvas.toDataURL('image/png');
-            resolve(pngData);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        img.onerror = function(err) {
-          URL.revokeObjectURL(url);
-          reject(err);
-        };
-        img.src = url;
-      } catch (err) {
-        reject(err);
-      }
-    });
-  }
-
-  // Attach download handlers to each DataMatrix download button.  The
-  // handler locates the sibling SVG, converts it to PNG and triggers a
-  // download with a filename derived from the product code when available.
-  const downloadButtons = document.querySelectorAll('.dm-download');
-  if (downloadButtons && downloadButtons.length > 0) {
-    downloadButtons.forEach(function(btn) {
-      btn.addEventListener('click', function(evt) {
-        evt.preventDefault();
-        const row = btn.closest('tr');
-        if (!row) return;
-        const svg = row.querySelector('.dm-container svg');
-        if (!svg) return;
-        svgToPngDataUrl(svg, 240).then(function(dataUrl) {
-          const link = document.createElement('a');
-          const codeCell = row.querySelector('.production-box-item-code');
-          const baseName = codeCell ? codeCell.textContent.trim() : 'datamatrix';
-          link.href = dataUrl;
-          link.download = baseName ? baseName + '-datamatrix.png' : 'datamatrix.png';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }).catch(function(err) {
-          console.error('Unable to download DataMatrix', err);
-          alert('Impossibile scaricare il Datamatrix.');
-        });
-      });
-    });
-  }
-
-  // Nessun bottone extra duplicato: il pulsante "Carica documenti"
-  // utilizza direttamente l'handler definito sopra.
-});
-</script>
-
+<script src="{{ url_for('static', filename='js/datamatrix.min.js') }}" defer></script>

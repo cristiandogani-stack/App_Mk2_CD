@@ -538,22 +538,16 @@ def clear_production_history() -> None:
             db.session.rollback()
         except Exception:
             pass
-    # Purge completed assembly directories under Produzione/Assiemi_completati.
-    # This directory contains nested documentation for assemblies that have
-    # already been built.  Removing its contents prevents stale data from
-    # appearing in the archive when no new builds have been performed.
-    try:
-        root_path = _cur_app.root_path
-        assiemi_path = os.path.join(root_path, 'Produzione', 'Assiemi_completati')
-        # Use the correct variable name when checking existence and iterating
-        if os.path.isdir(assiemi_path):
-            for entry in os.listdir(assiemi_path):
-                full_path = os.path.join(assiemi_path, entry)
-                if os.path.isdir(full_path):
-                    shutil.rmtree(full_path, ignore_errors=True)
-    except Exception:
-        # Ignore any filesystem errors during cleanup
-        pass
+    # Preserve completed assembly directories under ``Produzione/Assiemi_completati``.
+    #
+    # In previous iterations the application purged all subdirectories within
+    # ``Produzione/Assiemi_completati`` at import time to prevent stale data
+    # from being displayed.  However, this removed the entire assembly history
+    # each time the server restarted or the module was reloaded, causing the
+    # "archivio assiemi" to appear empty.  The cleanup has been disabled to
+    # retain completed assembly documentation and allow operators to review
+    # historical builds.  If any purging is needed in the future it should
+    # be implemented with explicit user actions rather than on module import.
 
 @inventory_bp.app_context_processor
 def inject_inventory_logs():

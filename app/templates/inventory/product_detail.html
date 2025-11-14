@@ -142,19 +142,19 @@
                      absolute positioning will not affect the flex layout of the buttons. #}
                   {% if avail and avail > 0 %}
                     <span style="position:absolute; top:0; right:0; color:#10b981; font-weight:600;">
-                      🟢 {{ avail }}
+                      🟢 Da costruire: {{ avail }}
                     </span>
                   {% else %}
                     <span style="position:absolute; top:0; right:0; color:#ef4444; font-weight:600;">
-                      🔴 0
+                      🔴 Da costruire: 0
                     </span>
                   {% endif %}
                   {# Show action buttons inline.  The parent .col-actions has display:flex and align-items:center set in the CSS, so
                      the buttons will be vertically centered automatically.  Use a gap to separate them. #}
                   {% if avail and avail > 0 %}
-                    <a href="javascript:void(0);" class="btn primary small" onclick="costruisciAssembly('{{ node.structure.name }}', {{ avail }})" style="margin-right:4px;">Costruisci</a>
+                    <a href="javascript:void(0);" class="btn primary small" onclick="costruisciAssembly('{{ node.structure.name }}', {{ avail }})" style="margin-right:4px;">Prenota</a>
                   {% else %}
-                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5; margin-right:4px;">Costruisci</a>
+                    <a class="btn ghost small" style="pointer-events:none; opacity:0.5; margin-right:4px;">Prenota</a>
                   {% endif %}
                   <a href="javascript:void(0);" class="btn ghost small" onclick='apri({{ product.id }}, {{ node.structure.name|tojson }})'>Apri</a>
                 {% else %}

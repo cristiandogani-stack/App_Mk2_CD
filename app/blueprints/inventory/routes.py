@@ -21,7 +21,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
 from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
@@ -9930,13 +9930,15 @@ def production_box_view(box_id: int):
 
         The "Stock" indicator shown within the production box must reflect
         the quantity of completed products that remain in warehouse stock.
-        Counting the historical ProductBuild archive caused the metric to stay
-        positive even after the units had been shipped or otherwise removed
-        from inventory.  Instead we rely on the same signals used by the
-        warehouse overview: completed ``StockItem`` entries created from
-        product boxes (``PRODOTTO``) and, as a fallback, the
-        ``Product.quantity_in_stock`` counter that is updated whenever
-        finished goods are loaded or deducted.
+        Operators expect the value to increase only when a finished product
+        is built ("storico produzione").  To meet that expectation we sum
+        the ``ProductBuild`` rows associated with the product, counting only
+        builds originating from boxes marked ``PRODOTTO`` (or with no box
+        context).  For legacy datasets that tracked stock exclusively via
+        warehouse entries we fall back to completed ``StockItem`` records
+        produced by product boxes and, as a last resort, the
+        ``Product.quantity_in_stock`` counter when it contains a positive
+        value.
         """
 
         if not prod:
@@ -9945,6 +9947,33 @@ def production_box_view(box_id: int):
         product_id = getattr(prod, 'id', None)
         if not product_id:
             return 0
+
+        # Primary source: count ProductBuild rows tied to the finished product.
+        build_qty: int | None
+        try:
+            build_query = (
+                ProductBuild.query
+                .filter(ProductBuild.product_id == product_id)
+                .outerjoin(ProductionBox, ProductBuild.production_box_id == ProductionBox.id)
+                .filter(
+                    or_(
+                        ProductBuild.production_box_id.is_(None),
+                        ProductionBox.box_type == 'PRODOTTO',
+                    )
+                )
+            )
+            try:
+                build_qty = (
+                    build_query.with_entities(func.coalesce(func.sum(ProductBuild.qty), 0)).scalar()
+                )
+            except Exception:
+                builds = build_query.all()
+                build_qty = sum(int(getattr(b, 'qty', 0) or 0) for b in builds)
+        except Exception:
+            build_qty = None
+
+        if build_qty not in (None, 0):
+            return int(build_qty)
 
         stock_count: int | None
         try:
@@ -9978,55 +10007,6 @@ def production_box_view(box_id: int):
 
         if qty_in_stock > 0:
             return qty_in_stock
-
-        # As a last resort, inspect an assembly structure associated with the
-        # product.  Legacy datasets occasionally mirror the finished product
-        # stock on the assembly node rather than on ``Product.quantity_in_stock``.
-        # Restrict the lookup to structures flagged as assemblies to avoid
-        # misinterpreting component or part stock as completed products.
-        try:
-            product_name = (getattr(prod, 'name', '') or '').strip()
-        except Exception:
-            product_name = ''
-
-        structure_candidate = None
-        if product_name:
-            try:
-                structure_candidate = (
-                    Structure.query
-                    .filter(func.lower(Structure.name) == product_name.lower())
-                    .filter(Structure.flag_assembly.is_(True))
-                    .order_by(Structure.id.asc())
-                    .first()
-                )
-            except Exception:
-                structure_candidate = None
-
-        if not structure_candidate:
-            try:
-                comp = (
-                    ProductComponent.query
-                    .join(Structure, ProductComponent.structure_id == Structure.id)
-                    .filter(ProductComponent.product_id == product_id)
-                    .filter(Structure.flag_assembly.is_(True))
-                    .order_by(ProductComponent.id.asc())
-                    .first()
-                )
-            except Exception:
-                comp = None
-            if comp:
-                try:
-                    structure_candidate = Structure.query.get(comp.structure_id)
-                except Exception:
-                    structure_candidate = None
-
-        if structure_candidate:
-            try:
-                struct_qty = int(getattr(structure_candidate, 'quantity_in_stock', 0) or 0)
-            except Exception:
-                struct_qty = 0
-            if struct_qty > 0:
-                return struct_qty
 
         return 0
 

@@ -85,6 +85,7 @@
     {% else %}
       <form method="post" enctype="multipart/form-data" class="workflow-form form">
         <input type="hidden" name="back_url" value="{{ back_url or url_for('inventory.product_detail', product_id=product.id) }}">
+        <input type="hidden" name="assembly_code" value="{{ assembly_code }}">
         {% if csrf_token %}
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% endif %}

@@ -6206,11 +6206,37 @@ def product_archive_assemblies_view(product_id: int):
                     cand_items = StockItem.query.filter_by(production_box_id=box_id).all()
                 except Exception:
                     cand_items = []
+                # Prefer the stock item that represents the assembled product itself.
+                # Components consumed to build the assembly share the production box but
+                # have different product_ids.  Selecting the first item indiscriminately
+                # could therefore return the DataMatrix of a consumed component which is
+                # present in ``consumed_codes`` and cause the entire build to be filtered
+                # out.  By prioritising stock items whose product_id matches the built
+                # product we reliably pick the DataMatrix of the assembly, regardless of
+                # the order returned by the query.  This also covers assemblies that were
+                # later associated to a parent because the same stock item retains its
+                # product_id even when ``parent_code`` is populated.
+                preferred_code = None
+                fallback_code = None
                 for si in cand_items or []:
                     dmcode = getattr(si, 'datamatrix_code', '') or ''
-                    if dmcode:
-                        code = dmcode
-                        break
+                    if not dmcode:
+                        continue
+                    if fallback_code is None:
+                        fallback_code = dmcode
+                    try:
+                        if getattr(si, 'product_id', None) == product.id:
+                            preferred_code = dmcode
+                            break
+                    except Exception:
+                        # Ignore errors while reading product_id and continue evaluating
+                        # remaining stock items so that at least a fallback code can be
+                        # used.
+                        continue
+                if preferred_code is not None:
+                    code = preferred_code
+                elif fallback_code is not None:
+                    code = fallback_code
         except Exception:
             code = None
         if not code:

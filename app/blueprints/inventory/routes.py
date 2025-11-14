@@ -9049,7 +9049,7 @@ def build_product(product_id: int) -> Any:
     try:
         from ...models import ProductComponent as PC, Structure as STR, ProductBuild, ProductBuildItem
         # Helper to adjust the stock of a product and its structure.
-        def _adjust_structure_stock(prod: Product, delta: float) -> None:
+        def _adjust_structure_stock(prod: Product, delta: float, skip_struct_ids: set[int] | None = None) -> None:
             """Adjust stock of the root structure for ``prod`` by ``delta``.
 
             When decrementing stock the smallest on‑hand quantity across
@@ -9069,6 +9069,8 @@ def build_product(product_id: int) -> Any:
                 return
             struct = STR.query.get(root_comp.structure_id)
             if not struct:
+                return
+            if skip_struct_ids and struct.id in skip_struct_ids:
                 return
             # Gather all structures sharing the same name or component_id
             matches_dict: dict[int, STR] = {}
@@ -9114,6 +9116,8 @@ def build_product(product_id: int) -> Any:
             except Exception:
                 pass
             for m in matches:
+                if skip_struct_ids and m.id in skip_struct_ids:
+                    continue
                 try:
                     m.quantity_in_stock = new_qty
                 except Exception:
@@ -9187,6 +9191,7 @@ def build_product(product_id: int) -> Any:
         # structure.  Passing a Structure into that helper would
         # effectively no-op and fail to propagate stock changes.
         from ...models import Structure as _Struct  # type: ignore
+        consumed_structure_ids: set[int] = set()
         for c in children:
             child = c['child']
             # Default to a single unit when parsing quantity fails
@@ -9220,6 +9225,11 @@ def build_product(product_id: int) -> Any:
             # associated structure stock via the helper.
             try:
                 if isinstance(child, _Struct):
+                    try:
+                        if getattr(child, 'id', None) is not None:
+                            consumed_structure_ids.add(child.id)
+                    except Exception:
+                        pass
                     # Collect structures matching by name or component_id
                     matches: list[_Struct] = []
                     try:
@@ -9240,6 +9250,8 @@ def build_product(product_id: int) -> Any:
                     for s in matches:
                         try:
                             s.quantity_in_stock = new_qty
+                            if getattr(s, 'id', None) is not None:
+                                consumed_structure_ids.add(s.id)
                         except Exception:
                             pass
                 else:
@@ -9296,7 +9308,7 @@ def build_product(product_id: int) -> Any:
                 pass
         # Increment the finished product stock and adjust its structure
         product.quantity_in_stock = (product.quantity_in_stock or 0) + 1
-        _adjust_structure_stock(product, 1)
+        _adjust_structure_stock(product, 1, skip_struct_ids=consumed_structure_ids)
         # Create new ProductBuild record and its items.  When the product
         # build originates from a production box (via ?box_id= query
         # parameter), attach that box id to the ProductBuild so that

@@ -10,6 +10,7 @@ manually by consuming parts and uploading supporting documents.
 """
 
 import os
+import secrets
 import shutil  # Added for copying files
 import time
 from typing import List, Any
@@ -17,7 +18,7 @@ import base64
 import io
 from threading import RLock
 
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, abort, send_file, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, abort, send_file, jsonify, session
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -8689,7 +8690,57 @@ def build_product(product_id: int) -> Any:
     # deriving the nested structure in the production history.  Falling
     # back to ASSIEME here would still work due to alternative lookup
     # logic, but using PRODOTTO improves clarity.
-    assembly_code: str = f"P={product.name}|T=PRODOTTO"
+    # Persist a unique assembly code in the user session so that component
+    # associations performed across multiple page reloads (via AJAX scans)
+    # continue to reference the same parent code until the build completes.
+    # When no persisted code exists, derive one from the production box when
+    # available; otherwise synthesise a unique code by appending a BUILD
+    # segment with a random token.  Using a dedicated BUILD segment allows the
+    # association lookup logic to skip legacy alias fallbacks, ensuring that
+    # components from previous builds are not counted as already associated.
+    try:
+        prod_name = product.name or ''
+    except Exception:
+        prod_name = ''
+    if not prod_name:
+        try:
+            prod_name = f"id_{product.id}"
+        except Exception:
+            prod_name = 'prodotto'
+    base_assembly_code = f"P={prod_name}|T=PRODOTTO"
+    session_key = f"build_product_code_{getattr(product, 'id', 'unknown')}"
+    assembly_code: str | None = session.get(session_key)
+    box_id_param = request.args.get('box_id')
+    if not assembly_code:
+        resolved_code: str | None = None
+        box_id_int: int | None = None
+        if box_id_param:
+            try:
+                box_id_int = int(box_id_param)
+            except (TypeError, ValueError):
+                box_id_int = None
+        if box_id_int:
+            try:
+                from ...models import StockItem as _StockItem
+                items_in_box = _StockItem.query.filter_by(production_box_id=box_id_int).all()
+            except Exception:
+                items_in_box = []
+            for si in items_in_box or []:
+                try:
+                    if getattr(si, 'product_id', None) == getattr(product, 'id', None):
+                        dm_candidate = getattr(si, 'datamatrix_code', '') or ''
+                        if dm_candidate:
+                            resolved_code = dm_candidate
+                            break
+                except Exception:
+                    continue
+        if resolved_code == base_assembly_code:
+            resolved_code = None
+        if not resolved_code:
+            token = secrets.token_hex(4).upper()
+            resolved_code = f"{base_assembly_code}|BUILD={token}"
+        assembly_code = resolved_code
+        session[session_key] = assembly_code
 
     # Compute required quantities and associated counts for each child.
     required_quantities: dict[int, int] = {}
@@ -8714,10 +8765,19 @@ def build_product(product_id: int) -> Any:
                 return _StockItem.query.filter_by(parent_code=code).all()
             except Exception:
                 return []
-        # Primary lookup using the full assembly_code
-        assoc_items: list[Any] = _gather_items_for_parent(assembly_code)
-        # Fallback lookup using simplified variants when no results
-        if not assoc_items:
+        assoc_items: list[Any] = []
+        skip_alias = False
+        if assembly_code:
+            try:
+                skip_alias = '|BUILD=' in assembly_code.upper()
+            except Exception:
+                skip_alias = False
+            assoc_items = _gather_items_for_parent(assembly_code)
+        # Fallback lookup using simplified variants when no results and alias
+        # lookup is permitted.  When the assembly code includes a BUILD
+        # segment we intentionally skip these fallbacks to avoid matching
+        # associations from previous builds that used a different unique code.
+        if assembly_code and not skip_alias and not assoc_items:
             segments = (assembly_code or '').split('|')
             if segments:
                 seg_no_dm = segments[1:] if segments and segments[0].upper().startswith('DM') else segments[:]
@@ -8863,6 +8923,11 @@ def build_product(product_id: int) -> Any:
     # scans).  Abort when any condition fails and redirect back with
     # an appropriate message.
     # ---------------------------------------------------------------------
+    if request.method == 'POST':
+        form_code = request.form.get('assembly_code')
+        if form_code:
+            assembly_code = form_code
+            session[session_key] = assembly_code
     # POST: recompute documentation.  Collect product-level documentation
     # similarly to the GET branch.  For each document category, require a
     # single compiled upload rather than one per document.  Missing
@@ -8984,8 +9049,15 @@ def build_product(product_id: int) -> Any:
                 return _StockItem.query.filter_by(parent_code=code).all()
             except Exception:
                 return []
-        assoc_items: list[Any] = _gather_items_for_parent(assembly_code)
-        if not assoc_items:
+        assoc_items: list[Any] = []
+        skip_alias = False
+        if assembly_code:
+            try:
+                skip_alias = '|BUILD=' in assembly_code.upper()
+            except Exception:
+                skip_alias = False
+            assoc_items = _gather_items_for_parent(assembly_code)
+        if assembly_code and not skip_alias and not assoc_items:
             segments = (assembly_code or '').split('|')
             if segments:
                 seg_no_dm = segments[1:] if segments and segments[0].upper().startswith('DM') else segments[:]
@@ -9412,7 +9484,7 @@ def build_product(product_id: int) -> Any:
         #   3. Use the resulting DataMatrix code (original or synthetic)
         #      as ``dm_code`` when linking all child stock items via
         #      their ``parent_code`` field.
-        dm_code: str = f"P={product.name}|T=PRODOTTO"
+        dm_code: str = assembly_code or base_assembly_code
         try:
             from ...models import StockItem as _SI  # type: ignore
             box_id_raw = request.args.get('box_id')
@@ -9506,7 +9578,7 @@ def build_product(product_id: int) -> Any:
             # associations use the same code as the build history and avoids
             # mismatches when a scanned code includes prefixes (e.g. DM
             # variants) not present in the synthetic code.
-            dm_code: str = f"P={product.name}|T=PRODOTTO"
+            dm_code: str = assembly_code or base_assembly_code
             items: list[Any] | None = None
             if box_id_assoc:
                 try:
@@ -10018,6 +10090,10 @@ def build_product(product_id: int) -> Any:
             # Do not block the build if updating the production box fails
             pass
         flash('Prodotto assemblato con successo.', 'success')
+        try:
+            session.pop(session_key, None)
+        except Exception:
+            pass
         # Determine where to redirect after a successful build.  Use the
         # back_url provided in the form, then fall back to the referrer
         # header and finally the product detail page.  When called from

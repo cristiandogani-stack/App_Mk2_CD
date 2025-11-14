@@ -9979,24 +9979,54 @@ def production_box_view(box_id: int):
         if qty_in_stock > 0:
             return qty_in_stock
 
-        # As a last resort, inspect the first structure associated with the
-        # product.  Some legacy datasets mirror the finished product stock on
-        # the root structure instead of on the product itself.
+        # As a last resort, inspect an assembly structure associated with the
+        # product.  Legacy datasets occasionally mirror the finished product
+        # stock on the assembly node rather than on ``Product.quantity_in_stock``.
+        # Restrict the lookup to structures flagged as assemblies to avoid
+        # misinterpreting component or part stock as completed products.
         try:
-            comp = (
-                ProductComponent.query
-                .filter_by(product_id=product_id)
-                .order_by(ProductComponent.id.asc())
-                .first()
-            )
-            if comp:
-                struct = Structure.query.get(comp.structure_id)
-                if struct:
-                    struct_qty = int(getattr(struct, 'quantity_in_stock', 0) or 0)
-                    if struct_qty > 0:
-                        return struct_qty
+            product_name = (getattr(prod, 'name', '') or '').strip()
         except Exception:
-            pass
+            product_name = ''
+
+        structure_candidate = None
+        if product_name:
+            try:
+                structure_candidate = (
+                    Structure.query
+                    .filter(func.lower(Structure.name) == product_name.lower())
+                    .filter(Structure.flag_assembly.is_(True))
+                    .order_by(Structure.id.asc())
+                    .first()
+                )
+            except Exception:
+                structure_candidate = None
+
+        if not structure_candidate:
+            try:
+                comp = (
+                    ProductComponent.query
+                    .join(Structure, ProductComponent.structure_id == Structure.id)
+                    .filter(ProductComponent.product_id == product_id)
+                    .filter(Structure.flag_assembly.is_(True))
+                    .order_by(ProductComponent.id.asc())
+                    .first()
+                )
+            except Exception:
+                comp = None
+            if comp:
+                try:
+                    structure_candidate = Structure.query.get(comp.structure_id)
+                except Exception:
+                    structure_candidate = None
+
+        if structure_candidate:
+            try:
+                struct_qty = int(getattr(structure_candidate, 'quantity_in_stock', 0) or 0)
+            except Exception:
+                struct_qty = 0
+            if struct_qty > 0:
+                return struct_qty
 
         return 0
 

@@ -9941,26 +9941,6 @@ def production_box_view(box_id: int):
         if not product_id:
             return 0
 
-        try:
-            child_rows = db.session.query(BOMLine.figlio_id).distinct().all()
-        except Exception:
-            child_rows = []
-        child_product_ids: set[int] = set()
-        for row in child_rows or []:
-            try:
-                val = row[0] if isinstance(row, (tuple, list)) else getattr(row, 'figlio_id', None)
-            except Exception:
-                val = None
-            if val is None:
-                continue
-            try:
-                child_product_ids.add(int(val))
-            except Exception:
-                try:
-                    child_product_ids.add(val)  # type: ignore[arg-type]
-                except Exception:
-                    continue
-
         box_cache: dict[int, ProductionBox | None] = {}
 
         def _get_box(box_id: int) -> ProductionBox | None:
@@ -9974,37 +9954,50 @@ def production_box_view(box_id: int):
             return box_obj
 
         def _is_finished_build(pb: ProductBuild) -> bool:
+            """Return ``True`` when ``pb`` represents a final product build."""
+
             if not pb:
                 return False
 
+            # Builds must originate from a production box explicitly marked as a
+            # finished product.  Assemblies and intermediate components use
+            # different box types ("ASSIEME", "PARTE", "COMMERCIALE", ...).  By
+            # insisting on a ``PRODOTTO`` box we avoid counting builds created
+            # from assembly boxes which previously inflated the stock metric.
             box_id = None
             try:
                 box_id = getattr(pb, 'production_box_id', None)
             except Exception:
                 box_id = None
 
-            if box_id:
-                box_obj = _get_box(box_id)
-                if box_obj:
-                    try:
-                        box_type = (getattr(box_obj, 'box_type', '') or '').strip().upper()
-                    except Exception:
-                        box_type = ''
-                    if box_type == 'PRODOTTO':
-                        return True
-                try:
-                    items = StockItem.query.filter_by(production_box_id=box_id, product_id=product_id).all()
-                except Exception:
-                    items = []
-                for item in items or []:
-                    try:
-                        dm_val = (item.datamatrix_code or '').upper()
-                    except Exception:
-                        dm_val = ''
-                    if dm_val and 'T=PRODOTTO' in dm_val:
-                        return True
+            if not box_id:
+                return False
 
-            return product_id not in child_product_ids
+            box_obj = _get_box(box_id)
+            if not box_obj:
+                return False
+
+            try:
+                box_type = (getattr(box_obj, 'box_type', '') or '').strip().upper()
+            except Exception:
+                box_type = ''
+
+            if box_type != 'PRODOTTO':
+                return False
+
+            # Optionally confirm that the box actually produced the same product
+            # as the build.  While mismatches should not happen, this guard makes
+            # the intent explicit and keeps the count resilient to inconsistent
+            # data associations.
+            try:
+                if getattr(box_obj, 'product_id', None) not in (None, product_id):
+                    return False
+            except Exception:
+                # Ignore attribute errors; older schemas may not expose a
+                # ``product_id`` on the production box.
+                pass
+
+            return True
 
         try:
             builds = ProductBuild.query.filter_by(product_id=product_id).all()

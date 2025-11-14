@@ -9926,33 +9926,79 @@ def production_box_view(box_id: int):
     # standalone component) the metrics remain undefined.
 
     def _built_quantity_for_product(prod: Product | None) -> int:
-        """Return the total number of units assembled for ``prod``.
+        """Return the number of finished units currently available for ``prod``.
 
-        The count is derived from the storico produzione (``ProductBuild``)
-        records to reflect how many units have actually been built over time.
-        When the aggregation query fails, fall back to summing the retrieved
-        rows in Python so that the UI still surfaces a meaningful number.
+        The "Stock" indicator shown within the production box must reflect
+        the quantity of completed products that remain in warehouse stock.
+        Counting the historical ProductBuild archive caused the metric to stay
+        positive even after the units had been shipped or otherwise removed
+        from inventory.  Instead we rely on the same signals used by the
+        warehouse overview: completed ``StockItem`` entries created from
+        product boxes (``PRODOTTO``) and, as a fallback, the
+        ``Product.quantity_in_stock`` counter that is updated whenever
+        finished goods are loaded or deducted.
         """
 
         if not prod:
             return 0
+
+        product_id = getattr(prod, 'id', None)
+        if not product_id:
+            return 0
+
+        stock_count: int | None
         try:
-            total = (db.session.query(func.coalesce(func.sum(ProductBuild.qty), 0))
-                     .filter(ProductBuild.product_id == prod.id)
-                     .scalar())
-            return int(total or 0)
-        except Exception:
+            stock_query = (
+                StockItem.query
+                .join(ProductionBox, StockItem.production_box_id == ProductionBox.id)
+                .filter(StockItem.product_id == product_id)
+                .filter(StockItem.status == 'COMPLETATO')
+                .filter(ProductionBox.box_type == 'PRODOTTO')
+            )
             try:
-                builds = ProductBuild.query.filter_by(product_id=prod.id).all()
+                stock_count = stock_query.filter(
+                    func.upper(func.coalesce(StockItem.datamatrix_code, '')).like('%T=PRODOTTO%')
+                ).count()
             except Exception:
-                return 0
-            total = 0
-            for build in builds:
-                try:
-                    total += int(getattr(build, 'qty', 0) or 0)
-                except Exception:
-                    continue
-            return total
+                items = stock_query.all()
+                stock_count = sum(
+                    1 for item in items
+                    if 'T=PRODOTTO' in (item.datamatrix_code or '').upper()
+                )
+        except Exception:
+            stock_count = None
+
+        if stock_count not in (None, 0):
+            return int(stock_count)
+
+        try:
+            qty_in_stock = int(getattr(prod, 'quantity_in_stock', 0) or 0)
+        except Exception:
+            qty_in_stock = 0
+
+        if qty_in_stock > 0:
+            return qty_in_stock
+
+        # As a last resort, inspect the first structure associated with the
+        # product.  Some legacy datasets mirror the finished product stock on
+        # the root structure instead of on the product itself.
+        try:
+            comp = (
+                ProductComponent.query
+                .filter_by(product_id=product_id)
+                .order_by(ProductComponent.id.asc())
+                .first()
+            )
+            if comp:
+                struct = Structure.query.get(comp.structure_id)
+                if struct:
+                    struct_qty = int(getattr(struct, 'quantity_in_stock', 0) or 0)
+                    if struct_qty > 0:
+                        return struct_qty
+        except Exception:
+            pass
+
+        return 0
 
     stock_qty: int | None = None
     available_to_build: int | None = None
@@ -9990,13 +10036,10 @@ def production_box_view(box_id: int):
                             assembly_product = Product.query.get(comp_ref.product_id)
                 except Exception:
                     assembly_product = None
-                if assembly_product:
-                    stock_qty = _built_quantity_for_product(assembly_product)
-                else:
-                    try:
-                        stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
-                    except Exception:
-                        stock_qty = 0
+                try:
+                    stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                except Exception:
+                    stock_qty = 0
                 try:
                     _assign_complete_qty_recursive(root_structure)
                 except Exception:

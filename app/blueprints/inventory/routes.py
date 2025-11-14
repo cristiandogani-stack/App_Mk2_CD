@@ -21,7 +21,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, case
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
 from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
@@ -6129,22 +6129,42 @@ def product_archive_assemblies_view(product_id: int):
     # below.
     consumed_codes: set[str] = set()
     try:
-        # Identify all stock items that have been consumed (linked to a parent assembly)
-        assoc_items = StockItem.query.filter(
-            StockItem.parent_code.isnot(None)
-        ).all()
+        # Aggregate stock items by DataMatrix code and count how many have been
+        # associated (parent_code populated).  When multiple physical items share
+        # the same DataMatrix, consider the assembly consumed only if *all*
+        # instances are associated.  This prevents linking a single unit from
+        # removing the entire build history when additional units remain available.
+        dm_stats = (
+            db.session.query(
+                StockItem.datamatrix_code.label('dm'),
+                func.count(StockItem.id).label('total'),
+                func.sum(case((StockItem.parent_code.isnot(None), 1), else_=0)).label('associated')
+            )
+            .filter(StockItem.datamatrix_code.isnot(None))
+            .group_by(StockItem.datamatrix_code)
+            .all()
+        )
     except Exception:
-        assoc_items = []
-    for si in assoc_items:
-        # Skip if no DataMatrix is recorded
-        dm = getattr(si, 'datamatrix_code', '') or ''
+        dm_stats = []
+    for stat in dm_stats or []:
+        dm_raw = getattr(stat, 'dm', '') or getattr(stat, 'datamatrix_code', '') or ''
+        dm = dm_raw.strip()
         if not dm:
             continue
-        # Always add the full DataMatrix code for an exact match.  This ensures that
-        # only the specific instance of an assembly is treated as consumed.  The
-        # full code includes any DMV prefixes and serial numbers.
+        try:
+            total = int(getattr(stat, 'total', 0) or 0)
+        except Exception:
+            total = 0
+        try:
+            associated = int(getattr(stat, 'associated', 0) or 0)
+        except Exception:
+            associated = 0
+        # Skip codes that have no associated instances or still have free units.
+        if total <= 0 or associated <= 0 or associated < total:
+            continue
+        # All stock items carrying this DataMatrix code have been linked to a parent,
+        # so treat the corresponding build as consumed.
         consumed_codes.add(dm)
-        # Attempt to derive component and type fields from the code
         comp_val: str | None = None
         typ_val: str | None = None
         try:
@@ -6156,17 +6176,10 @@ def product_archive_assemblies_view(product_id: int):
         except Exception:
             comp_val = None
             typ_val = None
-        # Only add a simplified P/T variant for finished products.  In prior
-        # implementations a simplified code was added for all types, which
-        # caused all builds of the same assembly to be filtered out once a
-        # single instance was associated.  Restricting simplified codes to
-        # final products ensures that consumed assemblies remove only the
-        # exact matching build while still filtering product builds.
         try:
             if comp_val and typ_val and str(typ_val).upper() == 'PRODOTTO':
                 consumed_codes.add(f"P={comp_val}|T={typ_val}")
         except Exception:
-            # On any error do not add simplified variants
             pass
 
     # Now filter the list of builds by skipping those whose assembly

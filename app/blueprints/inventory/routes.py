@@ -6113,15 +6113,20 @@ def product_archive_assemblies_view(product_id: int):
     # Build a set of DataMatrix codes that correspond to assemblies which have
     # been linked to a parent assembly.  When an assembly is consumed by a
     # higher‑level assembly (via the ASSOCIA scan), its stock item will
-    # have a non‑null ``parent_code``.  We include all such codes here
-    # regardless of the T= label so that assemblies built using an
-    # incorrect or missing type (e.g., ``PARTE`` instead of ``ASSIEME``)
-    # are still excluded from the top‑level archive.  Both the full
-    # DataMatrix and a simplified component/type code are added to
-    # ensure matches against synthetic codes derived later.  Parsing is
-    # performed inline to avoid relying on helpers defined further
-    # below.
+    # have a non‑null ``parent_code``.  We record the full DataMatrix for
+    # exact matches and additionally collect simplified component/type
+    # aliases so that assemblies lacking serial information can still be
+    # filtered.  Parsing is performed inline to avoid relying on helpers
+    # defined further below.
     consumed_codes: set[str] = set()
+    # Maintain a mapping of simplified alias codes (``P=<component>|T=<type>``)
+    # to the full DataMatrix values that produced them.  Assemblies built with
+    # serialised codes should only mark the exact DataMatrix as consumed,
+    # whereas historical records that lack extra segments (and therefore match
+    # the alias exactly) still need to be filtered out.  Tracking both forms
+    # allows the archive to hide only the specific assemblies that were
+    # associated to a parent product.
+    consumed_alias_map: dict[str, set[str]] = {}
     try:
         assoc_items = StockItem.query.filter(
             StockItem.parent_code.isnot(None)
@@ -6134,11 +6139,11 @@ def product_archive_assemblies_view(product_id: int):
             continue
         # Add the full DataMatrix code to the consumed set
         consumed_codes.add(dm)
-        # Also add a simplified P/T variant when possible.  This helps
-        # match synthetic codes that omit extra segments such as S= or
-        # DMV version prefixes.  The parsing looks for pipe‑delimited
-        # segments beginning with ``P=`` and ``T=`` and uses those to
-        # construct a simplified code.
+        # Also record a simplified P/T variant when possible.  Instead of
+        # immediately treating the alias as consumed (which previously removed
+        # all assemblies sharing the same product/type pair), store the mapping
+        # so we can later determine whether the alias itself uniquely
+        # identifies a consumed assembly.
         comp_val = None
         typ_val = None
         try:
@@ -6148,7 +6153,8 @@ def product_archive_assemblies_view(product_id: int):
                 elif seg.startswith('T='):
                     typ_val = seg.split('=', 1)[1]
             if comp_val and typ_val:
-                consumed_codes.add(f"P={comp_val}|T={typ_val}")
+                alias_code = f"P={comp_val}|T={typ_val}"
+                consumed_alias_map.setdefault(alias_code, set()).add(dm)
         except Exception:
             # Ignore parsing errors; fallback to only full code
             pass
@@ -6206,9 +6212,14 @@ def product_archive_assemblies_view(product_id: int):
         if dm_type and dm_type.upper() == 'PRODOTTO':
             continue
         # Skip builds whose assembly code appears in the consumed set.
-        # This check covers both full DataMatrix codes and simplified
-        # P/T codes due to the way ``consumed_codes`` was populated.
         if code in consumed_codes:
+            continue
+        # When the build code is a simplified alias (e.g. ``P=XYZ|T=ASSIEME``)
+        # only treat it as consumed if every recorded DataMatrix for that alias
+        # is itself simplified.  Assemblies with unique serialised codes remain
+        # visible so that unassociated units are still displayed in the archive.
+        alias_matches = consumed_alias_map.get(code)
+        if alias_matches and all(match == code for match in alias_matches):
             continue
         filtered_builds.append(b)
 

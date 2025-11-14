@@ -6227,20 +6227,35 @@ def product_archive_assemblies_view(product_id: int):
             continue
         alias_code = _alias_for_code(code)
         consumed_direct = remaining_consumed.get(code, 0)
-        consumed_alias = remaining_consumed_alias.get(alias_code, 0) if alias_code else 0
+        # Only rely on alias-based counters when the build itself
+        # produced a synthetic DataMatrix code (i.e. ``code`` already
+        # matches the alias form ``P=<component>|T=<type>``).  Builds
+        # backed by a real DataMatrix include additional segments (such
+        # as ``S=`` serial numbers); in those cases matching on the
+        # alias would incorrectly treat sibling builds as consumed once
+        # a single unit is associated to a parent.  Restricting alias
+        # usage to synthetic codes preserves the intent of the original
+        # logic—hiding purely synthetic builds when an assembled unit is
+        # consumed—while ensuring that genuine build records remain in
+        # the archive even after association.
+        if alias_code and alias_code == code:
+            consumed_alias = remaining_consumed_alias.get(alias_code, 0)
+            available_alias = remaining_available_alias.get(alias_code, 0)
+        else:
+            consumed_alias = 0
+            available_alias = 0
         available_direct = remaining_available.get(code, 0)
-        available_alias = remaining_available_alias.get(alias_code, 0) if alias_code else 0
         total_consumed = consumed_direct + consumed_alias
         total_available = available_direct + available_alias
         if total_consumed > 0 and total_available <= 0:
             if consumed_direct > 0:
                 remaining_consumed[code] = consumed_direct - 1
-            elif alias_code and consumed_alias > 0:
+            elif alias_code and alias_code == code and consumed_alias > 0:
                 remaining_consumed_alias[alias_code] = consumed_alias - 1
             continue
         if available_direct > 0:
             remaining_available[code] = available_direct - 1
-        elif alias_code and available_alias > 0:
+        elif alias_code and alias_code == code and available_alias > 0:
             remaining_available_alias[alias_code] = available_alias - 1
         filtered_builds.append(b)
 

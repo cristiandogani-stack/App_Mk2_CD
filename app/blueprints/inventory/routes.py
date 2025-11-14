@@ -6110,60 +6110,74 @@ def product_archive_assemblies_view(product_id: int):
     # whose parent_code is populated and whose datamatrix indicates an
     # assembly (T=ASSIEME).  Filtering at this stage prevents the
     # consumed assemblies from appearing as standalone rows.
-    # Build a set of DataMatrix codes that correspond to assemblies which have
-    # been linked to a parent assembly.  When an assembly is consumed by a
-    # higher‑level assembly (via the ASSOCIA scan), its stock item will
-    # have a non‑null ``parent_code``.  We record the full DataMatrix for
-    # exact matches and additionally collect simplified component/type
-    # aliases so that assemblies lacking serial information can still be
-    # filtered.  Parsing is performed inline to avoid relying on helpers
-    # defined further below.
-    consumed_codes: set[str] = set()
-    # Maintain a mapping of simplified alias codes (``P=<component>|T=<type>``)
-    # to the full DataMatrix values that produced them.  Assemblies built with
-    # serialised codes should only mark the exact DataMatrix as consumed,
-    # whereas historical records that lack extra segments (and therefore match
-    # the alias exactly) still need to be filtered out.  Tracking both forms
-    # allows the archive to hide only the specific assemblies that were
-    # associated to a parent product.
-    consumed_alias_map: dict[str, set[str]] = {}
-    try:
-        assoc_items = StockItem.query.filter(
-            StockItem.parent_code.isnot(None)
-        ).all()
-    except Exception:
-        assoc_items = []
-    for si in assoc_items:
-        dm = si.datamatrix_code or ''
-        if not dm:
-            continue
-        # Add the full DataMatrix code to the consumed set
-        consumed_codes.add(dm)
-        # Also record a simplified P/T variant when possible.  Instead of
-        # immediately treating the alias as consumed (which previously removed
-        # all assemblies sharing the same product/type pair), store the mapping
-        # so we can later determine whether the alias itself uniquely
-        # identifies a consumed assembly.
+    # Build counters describing how many assemblies remain unassociated and how many
+    # have been linked to a parent product.  The counters operate both on the full
+    # DataMatrix payload and on a simplified alias (``P=<component>|T=<type>``) so
+    # that assemblies whose DataMatrix includes serial segments can still be matched
+    # against synthetic codes derived later in this function.  Tracking counts (rather
+    # than only the presence of a code) allows the archive to hide exactly the number
+    # of assemblies that were consumed while leaving any remaining units visible.
+    consumed_counts: dict[str, int] = {}
+    consumed_alias_counts: dict[str, int] = {}
+    available_counts: dict[str, int] = {}
+    available_alias_counts: dict[str, int] = {}
+
+    def _alias_for_code(dm_code: str) -> str | None:
+        """Return ``P=<component>|T=<type>`` for the given DataMatrix code."""
+
+        if not dm_code:
+            return None
         comp_val = None
         typ_val = None
         try:
-            for seg in dm.split('|'):
-                if seg.startswith('P='):
-                    comp_val = seg.split('=', 1)[1]
-                elif seg.startswith('T='):
-                    typ_val = seg.split('=', 1)[1]
+            for seg in dm_code.split('|'):
+                seg_norm = seg.strip()
+                upper = seg_norm.upper()
+                if upper.startswith('P='):
+                    comp_val = seg_norm.split('=', 1)[1]
+                elif upper.startswith('T='):
+                    typ_val = seg_norm.split('=', 1)[1]
             if comp_val and typ_val:
-                alias_code = f"P={comp_val}|T={typ_val}"
-                consumed_alias_map.setdefault(alias_code, set()).add(dm)
+                return f"P={comp_val}|T={typ_val}"
         except Exception:
-            # Ignore parsing errors; fallback to only full code
-            pass
+            return None
+        return None
 
-    # Now filter the list of builds by skipping those whose assembly
-    # datamatrix appears in the consumed_codes set.  Because the
-    # datamatrix for a build may not be stored directly on the build, we
-    # derive it using the same logic as below (checking stock items in
-    # the production_box first and then falling back to a synthetic code).
+    try:
+        all_items = StockItem.query.filter(StockItem.datamatrix_code.isnot(None)).all()
+    except Exception:
+        all_items = []
+    for si in all_items or []:
+        dm = (getattr(si, 'datamatrix_code', '') or '').strip()
+        if not dm:
+            continue
+        alias_code = _alias_for_code(dm)
+        parent_val = getattr(si, 'parent_code', None)
+        parent_clean = ''
+        if parent_val is not None:
+            try:
+                parent_clean = str(parent_val).strip()
+            except Exception:
+                parent_clean = str(parent_val or '')
+        is_consumed = bool(parent_clean)
+        if is_consumed:
+            consumed_counts[dm] = consumed_counts.get(dm, 0) + 1
+            if alias_code and alias_code != dm:
+                consumed_alias_counts[alias_code] = consumed_alias_counts.get(alias_code, 0) + 1
+        else:
+            available_counts[dm] = available_counts.get(dm, 0) + 1
+            if alias_code and alias_code != dm:
+                available_alias_counts[alias_code] = available_alias_counts.get(alias_code, 0) + 1
+
+    # Now filter the list of builds by comparing the remaining consumed and
+    # available counters.  Because the datamatrix for a build may not be stored
+    # directly on the build, we derive it using the same logic as below (checking
+    # stock items in the production_box first and then falling back to a
+    # synthetic code).
+    remaining_consumed = dict(consumed_counts)
+    remaining_consumed_alias = dict(consumed_alias_counts)
+    remaining_available = dict(available_counts)
+    remaining_available_alias = dict(available_alias_counts)
     filtered_builds: list[ProductBuild] = []
     for b in builds:
         # Determine the DataMatrix code for this build.  When a build
@@ -6211,16 +6225,23 @@ def product_archive_assemblies_view(product_id: int):
         # Exclude finished product builds from the assemblies archive
         if dm_type and dm_type.upper() == 'PRODOTTO':
             continue
-        # Skip builds whose assembly code appears in the consumed set.
-        if code in consumed_codes:
+        alias_code = _alias_for_code(code)
+        consumed_direct = remaining_consumed.get(code, 0)
+        consumed_alias = remaining_consumed_alias.get(alias_code, 0) if alias_code else 0
+        available_direct = remaining_available.get(code, 0)
+        available_alias = remaining_available_alias.get(alias_code, 0) if alias_code else 0
+        total_consumed = consumed_direct + consumed_alias
+        total_available = available_direct + available_alias
+        if total_consumed > 0 and total_available <= 0:
+            if consumed_direct > 0:
+                remaining_consumed[code] = consumed_direct - 1
+            elif alias_code and consumed_alias > 0:
+                remaining_consumed_alias[alias_code] = consumed_alias - 1
             continue
-        # When the build code is a simplified alias (e.g. ``P=XYZ|T=ASSIEME``)
-        # only treat it as consumed if every recorded DataMatrix for that alias
-        # is itself simplified.  Assemblies with unique serialised codes remain
-        # visible so that unassociated units are still displayed in the archive.
-        alias_matches = consumed_alias_map.get(code)
-        if alias_matches and all(match == code for match in alias_matches):
-            continue
+        if available_direct > 0:
+            remaining_available[code] = available_direct - 1
+        elif alias_code and available_alias > 0:
+            remaining_available_alias[alias_code] = available_alias - 1
         filtered_builds.append(b)
 
     # Use the filtered list for the remainder of the view.  This

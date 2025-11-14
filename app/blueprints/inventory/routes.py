@@ -9926,12 +9926,17 @@ def production_box_view(box_id: int):
     # standalone component) the metrics remain undefined.
 
     def _built_quantity_for_product(prod: Product | None) -> int:
-        """Return the total number of finished units assembled for ``prod``.
+        """Return the number of finished units currently available for ``prod``.
 
-        Only builds that represent the final product are counted.  Assemblies,
-        commercial parts and intermediate components recorded in the
-        ``ProductBuild`` archive are ignored so that the "Stock" metric shown in
-        the production box reflects exclusively completed products.
+        The "Stock" indicator shown within the production box must reflect
+        the quantity of completed products that remain in warehouse stock.
+        Counting the historical ProductBuild archive caused the metric to stay
+        positive even after the units had been shipped or otherwise removed
+        from inventory.  Instead we rely on the same signals used by the
+        warehouse overview: completed ``StockItem`` entries created from
+        product boxes (``PRODOTTO``) and, as a fallback, the
+        ``Product.quantity_in_stock`` counter that is updated whenever
+        finished goods are loaded or deducted.
         """
 
         if not prod:
@@ -9941,81 +9946,59 @@ def production_box_view(box_id: int):
         if not product_id:
             return 0
 
-        box_cache: dict[int, ProductionBox | None] = {}
-
-        def _get_box(box_id: int) -> ProductionBox | None:
-            if box_id in box_cache:
-                return box_cache[box_id]
+        stock_count: int | None
+        try:
+            stock_query = (
+                StockItem.query
+                .join(ProductionBox, StockItem.production_box_id == ProductionBox.id)
+                .filter(StockItem.product_id == product_id)
+                .filter(StockItem.status == 'COMPLETATO')
+                .filter(ProductionBox.box_type == 'PRODOTTO')
+            )
             try:
-                box_obj = ProductionBox.query.get(box_id)
+                stock_count = stock_query.filter(
+                    func.upper(func.coalesce(StockItem.datamatrix_code, '')).like('%T=PRODOTTO%')
+                ).count()
             except Exception:
-                box_obj = None
-            box_cache[box_id] = box_obj
-            return box_obj
+                items = stock_query.all()
+                stock_count = sum(
+                    1 for item in items
+                    if 'T=PRODOTTO' in (item.datamatrix_code or '').upper()
+                )
+        except Exception:
+            stock_count = None
 
-        def _is_finished_build(pb: ProductBuild) -> bool:
-            """Return ``True`` when ``pb`` represents a final product build."""
-
-            if not pb:
-                return False
-
-            # Builds must originate from a production box explicitly marked as a
-            # finished product.  Assemblies and intermediate components use
-            # different box types ("ASSIEME", "PARTE", "COMMERCIALE", ...).  By
-            # insisting on a ``PRODOTTO`` box we avoid counting builds created
-            # from assembly boxes which previously inflated the stock metric.
-            box_id = None
-            try:
-                box_id = getattr(pb, 'production_box_id', None)
-            except Exception:
-                box_id = None
-
-            if not box_id:
-                return False
-
-            box_obj = _get_box(box_id)
-            if not box_obj:
-                return False
-
-            try:
-                box_type = (getattr(box_obj, 'box_type', '') or '').strip().upper()
-            except Exception:
-                box_type = ''
-
-            if box_type != 'PRODOTTO':
-                return False
-
-            # Optionally confirm that the box actually produced the same product
-            # as the build.  While mismatches should not happen, this guard makes
-            # the intent explicit and keeps the count resilient to inconsistent
-            # data associations.
-            try:
-                if getattr(box_obj, 'product_id', None) not in (None, product_id):
-                    return False
-            except Exception:
-                # Ignore attribute errors; older schemas may not expose a
-                # ``product_id`` on the production box.
-                pass
-
-            return True
+        if stock_count not in (None, 0):
+            return int(stock_count)
 
         try:
-            builds = ProductBuild.query.filter_by(product_id=product_id).all()
+            qty_in_stock = int(getattr(prod, 'quantity_in_stock', 0) or 0)
         except Exception:
-            builds = []
+            qty_in_stock = 0
 
-        total = 0
-        for build in builds or []:
-            try:
-                qty_val = int(getattr(build, 'qty', 0) or 0)
-            except Exception:
-                qty_val = 0
-            if qty_val <= 0:
-                continue
-            if not _is_finished_build(build):
-                continue
-            total += qty_val
-        return total
+        if qty_in_stock > 0:
+            return qty_in_stock
+
+        # As a last resort, inspect the first structure associated with the
+        # product.  Some legacy datasets mirror the finished product stock on
+        # the root structure instead of on the product itself.
+        try:
+            comp = (
+                ProductComponent.query
+                .filter_by(product_id=product_id)
+                .order_by(ProductComponent.id.asc())
+                .first()
+            )
+            if comp:
+                struct = Structure.query.get(comp.structure_id)
+                if struct:
+                    struct_qty = int(getattr(struct, 'quantity_in_stock', 0) or 0)
+                    if struct_qty > 0:
+                        return struct_qty
+        except Exception:
+            pass
+
+        return 0
 
     stock_qty: int | None = None
     available_to_build: int | None = None

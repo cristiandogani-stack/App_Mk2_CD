@@ -636,9 +636,12 @@ def _assign_complete_qty_recursive(structure: Structure) -> None:
 def _calculate_reserved_assemblies() -> dict[int, int]:
     """Return a mapping from assembly Structure.id to the number of units
     currently reserved in production boxes.  Only boxes of type 'ASSIEME'
-    with status 'APERTO' or 'IN_CARICO' are considered.  Each stock item
-    in such a box counts as one reserved unit for the assembly identified
-    by the component code extracted from its DataMatrix.
+    with status 'APERTO' or 'IN_CARICO' are considered.  Stock items whose
+    status indicates completion (``COMPLETATO``), loading (``CARICATO``) or
+    scrap (``SCARTO``) are excluded so that completed reservations do not
+    continue to block assembly availability.  Remaining stock items each
+    contribute one reserved unit for the assembly identified by the
+    component code extracted from their DataMatrix.
 
     :return: dict mapping Structure.id to reserved quantity
     """
@@ -652,30 +655,38 @@ def _calculate_reserved_assemblies() -> dict[int, int]:
         ).all()
     except Exception:
         boxes = []
+    # Cache structures by component code to avoid repeated queries when multiple
+    # stock items reference the same assembly within a box.
+    struct_cache: dict[str, Structure] = {}
     for box in boxes:
-        # Skip boxes without items
         if not box.stock_items:
             continue
-        # Determine the component code (structure name) from the first stock item
-        dm = box.stock_items[0].datamatrix_code or ''
-        component_code = None
-        try:
-            parts = dm.split('|')
-            for part in parts:
-                if part.startswith('P='):
-                    component_code = part.split('=', 1)[1]
-                    break
-        except Exception:
+        for item in box.stock_items:
+            status = (getattr(item, 'status', '') or '').upper()
+            if status in ('COMPLETATO', 'SCARTO', 'CARICATO'):
+                # Completed or discarded items no longer hold a reservation.
+                continue
+            dm = getattr(item, 'datamatrix_code', '') or ''
             component_code = None
-        if not component_code:
-            continue
-        # Look up the corresponding Structure by name
-        try:
-            struct = Structure.query.filter_by(name=component_code).first()
-        except Exception:
-            struct = None
-        if struct:
-            reserved_counts[struct.id] = reserved_counts.get(struct.id, 0) + len(box.stock_items)
+            try:
+                for part in dm.split('|'):
+                    if part.startswith('P='):
+                        component_code = part.split('=', 1)[1]
+                        break
+            except Exception:
+                component_code = None
+            if not component_code:
+                continue
+            struct = struct_cache.get(component_code)
+            if struct is None:
+                try:
+                    struct = Structure.query.filter_by(name=component_code).first()
+                except Exception:
+                    struct = None
+                if struct:
+                    struct_cache[component_code] = struct
+            if struct:
+                reserved_counts[struct.id] = reserved_counts.get(struct.id, 0) + 1
     return reserved_counts
 
 

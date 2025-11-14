@@ -21,7 +21,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
-from sqlalchemy import func, or_, case
+from sqlalchemy import func, or_
 from ...extensions import db
 from ...models import Structure, Product, ProductComponent, InventoryLog, BOMLine
 from ...models import StockItem, Reservation, ProductionBox, ScanEvent, Document, ProductBuild
@@ -929,6 +929,95 @@ def _calculate_assembly_stock(structure: Structure, comp_map: dict[int, ProductC
     return int(min(ratios))
 
 
+# -----------------------------------------------------------------------------
+# Helper to compute the total number of finished units built for a product.
+#
+# When displaying product cards in the warehouse overview, the "Stock"
+# indicator should reflect how many finished products have actually been
+# assembled.  Historically, stock values were derived from legacy
+# counters such as ``Product.quantity_in_stock`` or by counting completed
+# ``StockItem`` records in product boxes.  However, these metrics can
+# diverge from the true production history once reservations, manual
+# adjustments or warehouse movements occur.  To ensure that the stock
+# aligns with the production history, this helper sums the ``qty`` field
+# of all ``ProductBuild`` records for the given product where the build
+# corresponds to a finished product (i.e. the DataMatrix code encodes
+# ``T=PRODOTTO").  Builds recorded for sub‑assemblies (``T=ASSIEME``) are
+# ignored.  When no builds exist the stock is zero.  Future shipping
+# (evasione) functionality should subtract shipped quantities from this
+# count.
+def _count_finished_product_builds(product: Product) -> int:
+    """Return the number of finished units built for ``product``.
+
+    The function inspects all ``ProductBuild`` rows associated with the
+    product.  For each build it attempts to derive a DataMatrix payload
+    using the same logic employed by the assemblies archive view: when
+    a production box is associated with the build, the code is taken
+    from any stock item in that box.  Otherwise a synthetic code is
+    generated based on whether the build consumed children (indicating
+    a finished product) or not (indicating an assembly).  Only codes
+    containing ``T=PRODOTTO`` contribute to the finished count.  Each
+    build contributes its ``qty`` value (defaulting to 1 when missing).
+
+    :param product: The Product instance to evaluate.
+    :return: Total number of finished units built.
+    """
+    if not product:
+        return 0
+    # Fetch all builds for this product.  On any error return zero.
+    try:
+        builds = ProductBuild.query.filter_by(product_id=product.id).all()
+    except Exception:
+        builds = []
+    total_qty: int = 0
+    # Import models locally to avoid circular import at module top-level
+    from ...models import StockItem as _StockItem, ProductBuildItem as _ProductBuildItem
+    for pb in builds:
+        # Try to derive a DataMatrix code from a stock item in the associated box
+        code: str | None = None
+        try:
+            box_id = getattr(pb, 'production_box_id', None)
+        except Exception:
+            box_id = None
+        if box_id:
+            try:
+                items_in_box = _StockItem.query.filter_by(production_box_id=box_id).all()
+            except Exception:
+                items_in_box = []
+            for si in items_in_box or []:
+                dmcode = getattr(si, 'datamatrix_code', '') or ''
+                if dmcode:
+                    code = dmcode
+                    break
+        # Fallback: determine if this is a product or assembly build by checking for children
+        if not code:
+            try:
+                child_exists = _ProductBuildItem.query.filter_by(product_build_id=pb.id).first() is not None
+            except Exception:
+                child_exists = False
+            if child_exists:
+                code = f"P={product.name}|T=PRODOTTO"
+            else:
+                code = f"P={product.name}|T=ASSIEME"
+        # Parse the type segment from the DataMatrix
+        dm_type: str | None = None
+        try:
+            for segment in (code or '').split('|'):
+                if segment.upper().startswith('T='):
+                    dm_type = segment.split('=', 1)[1]
+                    break
+        except Exception:
+            dm_type = None
+        if dm_type and str(dm_type).upper() == 'PRODOTTO':
+            # Include this build's quantity in the total
+            try:
+                qty_val = int(getattr(pb, 'qty', 1) or 1)
+            except Exception:
+                qty_val = 1
+            total_qty += qty_val
+    return total_qty
+
+
 @inventory_bp.route('/')
 @login_required
 def index():
@@ -955,36 +1044,16 @@ def index():
     product_cards: list[dict[str, object]] = []
     for product in products:
         qty_complete = _calculate_product_stock(product, reserved_products, reserved_structures)
-        stock_on_hand: int = 0
+        # Compute on‑hand stock based solely on completed builds recorded in
+        # ``ProductBuild``.  Legacy counters such as ``quantity_in_stock`` or
+        # counts of ``StockItem`` records are ignored to ensure that stock
+        # reflects the production history.  Each finished product build
+        # contributes its quantity (``ProductBuild.qty``) to the total.  When
+        # no builds exist the stock defaults to zero.
         try:
-            stock_query = (
-                StockItem.query
-                .join(ProductionBox, StockItem.production_box_id == ProductionBox.id)
-                .filter(StockItem.product_id == product.id)
-                .filter(StockItem.status == 'COMPLETATO')
-                .filter(ProductionBox.box_type == 'PRODOTTO')
-            )
-            try:
-                counted = stock_query.filter(
-                    func.upper(func.coalesce(StockItem.datamatrix_code, '')).like('%T=PRODOTTO%')
-                ).count()
-                stock_on_hand = int(counted or 0)
-            except Exception:
-                # When the database backend lacks support for SQL functions such as
-                # ``coalesce``/``upper``, evaluate the filter in Python to ensure we
-                # still count only DataMatrix codes explicitly marked as products.
-                items = stock_query.all()
-                stock_on_hand = sum(
-                    1 for item in items
-                    if 'T=PRODOTTO' in (item.datamatrix_code or '').upper()
-                )
+            stock_on_hand = _count_finished_product_builds(product)
         except Exception:
-            stock_on_hand = None
-        if stock_on_hand in (None, 0):
-            try:
-                stock_on_hand = int(product.quantity_in_stock or 0)
-            except Exception:
-                stock_on_hand = 0
+            stock_on_hand = 0
         product_cards.append({
             'product': product,
             'quantity_complete': qty_complete,
@@ -3608,14 +3677,105 @@ def archive() -> Any:
     except Exception:
         assoc_items = []
     for si in assoc_items:
+        """
+        Populate the set of consumed DataMatrix codes.  A stock item with a
+        non-null parent_code indicates that a unit has been consumed as a
+        component of a higher-level build.  However, assemblies often
+        maintain multiple units in stock, so consuming one instance should
+        not hide all corresponding build records.  To avoid suppressing
+        legitimate assembly history, we only mark a DataMatrix code as
+        consumed when **all** units of the referenced product have been
+        exhausted (quantity_in_stock <= 0).  This ensures that builds
+        remain visible while there are still unconsumed units.  When a
+        DataMatrix is marked as consumed, we add the full code and, for
+        finished products, a simplified `P=<component>|T=<type>` alias.  The
+        simplified alias is restricted to finished products to prevent
+        assemblies from disappearing after a single association.
+        """
+        # Skip stock items without a DataMatrix code
         try:
             dm = si.datamatrix_code or ''
         except Exception:
             dm = ''
         if not dm:
             continue
+        # Determine whether any units of this product remain unconsumed.  When
+        # available stock is greater than zero, skip adding the DM code to the
+        # consumed set.  To compute the available stock we examine the root
+        # structure associated with the product and take the maximum
+        # quantity_in_stock across structures sharing the same name or component_id.
+        has_remaining = False
+        try:
+            prod_obj = getattr(si, 'product', None)
+        except Exception:
+            prod_obj = None
+        try:
+            if prod_obj is not None:
+                # Attempt to resolve the root structure via ProductComponent
+                from ...models import ProductComponent, Structure as _Struct  # type: ignore
+                root_comp = None
+                try:
+                    root_comp = (
+                        ProductComponent.query
+                        .filter_by(product_id=prod_obj.id)
+                        .order_by(ProductComponent.id.asc())
+                        .first()
+                    )
+                except Exception:
+                    root_comp = None
+                available_qty = None
+                if root_comp:
+                    struct = None
+                    try:
+                        struct = _Struct.query.get(root_comp.structure_id)
+                    except Exception:
+                        struct = None
+                    if struct:
+                        # Collect structures matching by name or component_id
+                        matches_dict: dict[int, _Struct] = {}
+                        try:
+                            for m in _Struct.query.filter(_Struct.name == struct.name).all():
+                                matches_dict[m.id] = m
+                        except Exception:
+                            pass
+                        try:
+                            comp_id = getattr(struct, 'component_id', None)
+                            if comp_id is not None:
+                                for m in _Struct.query.filter(_Struct.component_id == comp_id).all():
+                                    matches_dict[m.id] = m
+                        except Exception:
+                            pass
+                        # Determine the maximum quantity_in_stock among matching structures
+                        vals: list[float] = []
+                        for m in matches_dict.values():
+                            try:
+                                vals.append(float(getattr(m, 'quantity_in_stock', 0) or 0))
+                            except Exception:
+                                pass
+                        if vals:
+                            try:
+                                available_qty = max(vals)
+                            except Exception:
+                                available_qty = vals[0]
+                # Fallback to the product's own quantity_in_stock when no structure is found
+                if available_qty is None:
+                    try:
+                        qty_on_hand = getattr(prod_obj, 'quantity_in_stock', None)
+                        if qty_on_hand is not None:
+                            available_qty = float(qty_on_hand)
+                    except Exception:
+                        available_qty = None
+                if available_qty is not None and available_qty > 0:
+                    has_remaining = True
+        except Exception:
+            # On any error assume there are remaining units to avoid over-filtering
+            has_remaining = True
+        if has_remaining:
+            # Do not mark this DM code as consumed because at least one unit remains
+            continue
+        # At this point all units of the product have been consumed; record the DM
         consumed_codes.add(dm)
-        # Also record simplified P/T variants to match synthetic codes
+        # Conditionally record simplified P/T variants only for finished products
         try:
             comp_val = None
             typ_val = None
@@ -3624,9 +3784,11 @@ def archive() -> Any:
                     comp_val = seg.split('=', 1)[1]
                 elif seg.startswith('T='):
                     typ_val = seg.split('=', 1)[1]
-            if comp_val and typ_val:
+            # Add a simplified alias only when the type is PRODOTTO
+            if comp_val and typ_val and str(typ_val).upper() == 'PRODOTTO':
                 consumed_codes.add(f"P={comp_val}|T={typ_val}")
         except Exception:
+            # On any parsing error, do not add a simplified variant
             pass
     # Fetch all builds sorted by timestamp descending
     all_builds: List[ProductBuild] = []
@@ -6127,59 +6289,59 @@ def product_archive_assemblies_view(product_id: int):
     # ensure matches against synthetic codes derived later.  Parsing is
     # performed inline to avoid relying on helpers defined further
     # below.
+    #
+    # Build a set of DataMatrix codes that correspond to assemblies which have
+    # been linked to a parent.  Each stock item with a non‑null parent_code
+    # represents a consumed assembly or component that should no longer
+    # appear as a standalone entry in the assembly archive.  We record the
+    # full DataMatrix code for every such stock item.  For finished
+    # products (T=PRODOTTO) we also record a simplified P/T variant so
+    # that synthetic codes generated later in this view are filtered out.
     consumed_codes: set[str] = set()
     try:
-        # Aggregate stock items by DataMatrix code and count how many have been
-        # associated (parent_code populated).  When multiple physical items share
-        # the same DataMatrix, consider the assembly consumed only if *all*
-        # instances are associated.  This prevents linking a single unit from
-        # removing the entire build history when additional units remain available.
-        dm_stats = (
-            db.session.query(
-                StockItem.datamatrix_code.label('dm'),
-                func.count(StockItem.id).label('total'),
-                func.sum(case((StockItem.parent_code.isnot(None), 1), else_=0)).label('associated')
-            )
-            .filter(StockItem.datamatrix_code.isnot(None))
-            .group_by(StockItem.datamatrix_code)
-            .all()
-        )
+        # Identify all stock items that have been consumed (linked to a parent assembly/product)
+        assoc_items = StockItem.query.filter(StockItem.parent_code.isnot(None)).all()
     except Exception:
-        dm_stats = []
-    for stat in dm_stats or []:
-        dm_raw = getattr(stat, 'dm', '') or getattr(stat, 'datamatrix_code', '') or ''
-        dm = dm_raw.strip()
+        assoc_items = []
+    for si in assoc_items:
+        # Extract the DataMatrix code; skip if missing
+        dm = getattr(si, 'datamatrix_code', '') or ''
         if not dm:
             continue
-        try:
-            total = int(getattr(stat, 'total', 0) or 0)
-        except Exception:
-            total = 0
-        try:
-            associated = int(getattr(stat, 'associated', 0) or 0)
-        except Exception:
-            associated = 0
-        # Skip codes that have no associated instances or still have free units.
-        if total <= 0 or associated <= 0 or associated < total:
-            continue
-        # All stock items carrying this DataMatrix code have been linked to a parent,
-        # so treat the corresponding build as consumed.
-        consumed_codes.add(dm)
+        # Parse component (P=) and type (T=) segments from the DataMatrix
         comp_val: str | None = None
         typ_val: str | None = None
         try:
             for seg in dm.split('|'):
-                if seg.startswith('P='):
+                if seg.upper().startswith('P='):
                     comp_val = seg.split('=', 1)[1]
-                elif seg.startswith('T='):
+                elif seg.upper().startswith('T='):
                     typ_val = seg.split('=', 1)[1]
         except Exception:
             comp_val = None
             typ_val = None
+        # Mark the full code as consumed
+        consumed_codes.add(dm)
+        # For finished products and assemblies add a simplified P/T variant.  This ensures
+        # synthetic codes (without serial or DMV prefixes) are filtered when
+        # deriving the assembly data matrix for builds.  Previously simplified
+        # codes were added only for finished products (T=PRODOTTO).  However, when
+        # consuming a sub‑assembly (T=ASSIEME) the corresponding build row uses a
+        # simplified payload (e.g. ``P=<name>|T=ASSIEME``) when no stock item is
+        # present.  Without adding the simplified code for consumed assemblies
+        # these builds would persist in the archive even after being consumed.
+        # To avoid removing unrelated assemblies, simplified codes are added only
+        # for entries explicitly marked as assemblies (T=ASSIEME) or finished
+        # products (T=PRODOTTO).  Parts and commercials (e.g. T=PARTE) are not
+        # simplified here so that multiple part builds do not all disappear when a
+        # single part instance is consumed.
         try:
-            if comp_val and typ_val and str(typ_val).upper() == 'PRODOTTO':
-                consumed_codes.add(f"P={comp_val}|T={typ_val}")
+            if comp_val and typ_val:
+                typ_upper = str(typ_val).upper()
+                if typ_upper in ('PRODOTTO', 'ASSIEME'):
+                    consumed_codes.add(f"P={comp_val}|T={typ_val}")
         except Exception:
+            # On any error do not add simplified variants
             pass
 
     # Now filter the list of builds by skipping those whose assembly
@@ -6206,37 +6368,11 @@ def product_archive_assemblies_view(product_id: int):
                     cand_items = StockItem.query.filter_by(production_box_id=box_id).all()
                 except Exception:
                     cand_items = []
-                # Prefer the stock item that represents the assembled product itself.
-                # Components consumed to build the assembly share the production box but
-                # have different product_ids.  Selecting the first item indiscriminately
-                # could therefore return the DataMatrix of a consumed component which is
-                # present in ``consumed_codes`` and cause the entire build to be filtered
-                # out.  By prioritising stock items whose product_id matches the built
-                # product we reliably pick the DataMatrix of the assembly, regardless of
-                # the order returned by the query.  This also covers assemblies that were
-                # later associated to a parent because the same stock item retains its
-                # product_id even when ``parent_code`` is populated.
-                preferred_code = None
-                fallback_code = None
                 for si in cand_items or []:
                     dmcode = getattr(si, 'datamatrix_code', '') or ''
-                    if not dmcode:
-                        continue
-                    if fallback_code is None:
-                        fallback_code = dmcode
-                    try:
-                        if getattr(si, 'product_id', None) == product.id:
-                            preferred_code = dmcode
-                            break
-                    except Exception:
-                        # Ignore errors while reading product_id and continue evaluating
-                        # remaining stock items so that at least a fallback code can be
-                        # used.
-                        continue
-                if preferred_code is not None:
-                    code = preferred_code
-                elif fallback_code is not None:
-                    code = fallback_code
+                    if dmcode:
+                        code = dmcode
+                        break
         except Exception:
             code = None
         if not code:
@@ -8914,6 +9050,15 @@ def build_product(product_id: int) -> Any:
         from ...models import ProductComponent as PC, Structure as STR, ProductBuild, ProductBuildItem
         # Helper to adjust the stock of a product and its structure.
         def _adjust_structure_stock(prod: Product, delta: float) -> None:
+            """Adjust stock of the root structure for ``prod`` by ``delta``.
+
+            When decrementing stock the smallest on‑hand quantity across
+            duplicates is used as the starting point so that no structure
+            ends up with a larger quantity after adjustment.  When increasing
+            stock the largest on‑hand quantity is used to keep duplicates
+            aligned.
+            """
+            # Locate the first top‑level ProductComponent associated with this product
             root_comp = (
                 PC.query
                 .filter_by(product_id=prod.id)
@@ -8925,6 +9070,7 @@ def build_product(product_id: int) -> Any:
             struct = STR.query.get(root_comp.structure_id)
             if not struct:
                 return
+            # Gather all structures sharing the same name or component_id
             matches_dict: dict[int, STR] = {}
             try:
                 for m in STR.query.filter(STR.name == struct.name).all():
@@ -8938,6 +9084,10 @@ def build_product(product_id: int) -> Any:
                 except Exception:
                     pass
             matches = list(matches_dict.values())
+            # Determine the base quantity for adjustment.  When reducing stock
+            # (delta negative) use the minimum across matches to avoid
+            # inadvertently increasing any structure.  When adding stock use
+            # the maximum to keep duplicates in sync.
             quantities: list[float] = []
             for m in matches:
                 try:
@@ -8949,13 +9099,25 @@ def build_product(product_id: int) -> Any:
                     quantities.append(float(struct.quantity_in_stock or 0))
                 except Exception:
                     quantities.append(0)
-            current_qty: float = max(quantities) if quantities else 0.0
-            new_qty: float = current_qty + delta
+            if quantities:
+                if delta < 0:
+                    base_qty = min(quantities)
+                else:
+                    base_qty = max(quantities)
+            else:
+                base_qty = 0.0
+            new_qty: float = base_qty + delta
             if new_qty < 0:
-                new_qty = 0
-            struct.quantity_in_stock = new_qty
+                new_qty = 0.0
+            try:
+                struct.quantity_in_stock = new_qty
+            except Exception:
+                pass
             for m in matches:
-                m.quantity_in_stock = new_qty
+                try:
+                    m.quantity_in_stock = new_qty
+                except Exception:
+                    pass
         # Persist uploaded files into the production archive.  Group
         # uploads by owner and folder under a timestamped directory.  Use
         # owner.safe_name_<timestamp>/<folder>/<filename>.
@@ -8979,13 +9141,24 @@ def build_product(product_id: int) -> Any:
             except Exception:
                 pass
         # Reset existing product builds and their items
+        #
+        # Do **not** delete ProductBuild records for assemblies or previous
+        # product builds.  Removing these entries would erase the history
+        # of completed builds from the assembly archive.  Previous
+        # implementations wiped all ProductBuild and ProductBuildItem rows
+        # associated with the current product, which led to the "Archivio
+        # assiemi" appearing empty after constructing a product.  To
+        # preserve build history, we intentionally leave existing
+        # ProductBuild and ProductBuildItem records untouched.  New build
+        # records will be appended below.
         try:
-            existing_builds = ProductBuild.query.filter_by(product_id=product.id).all()
-            for pb in existing_builds:
-                ProductBuildItem.query.filter_by(build_id=pb.id).delete()
-            ProductBuild.query.filter_by(product_id=product.id).delete()
-            db.session.flush()
+            # If specific cleanup of prior ProductBuildItem entries becomes
+            # necessary (e.g. to avoid duplicate child lists), implement it
+            # here by filtering only outdated or superseded entries.  For
+            # now, retain all prior records to maintain a complete audit trail.
+            pass
         except Exception:
+            # Silently ignore any errors
             pass
         # ---------------------------------------------------------------------
         # NOTE: Do **not** delete build records for child assemblies when
@@ -9074,6 +9247,52 @@ def build_product(product_id: int) -> Any:
                     _adjust_structure_stock(child, -qty_required)
             except Exception:
                 # If any propagation fails, proceed without blocking the build
+                pass
+
+            # -----------------------------------------------------------------
+            # Propagate stock changes to any Product records that share the
+            # same name as the current child.  It is possible for a
+            # component to be represented both as a Structure (used in
+            # assemblies) and as a Product (e.g. when the assembly is
+            # registered as a standalone product).  Without updating the
+            # Product quantity here, warehouse pages that query the
+            # Product table may continue to display the old on-hand
+            # quantity even after the underlying Structure stock has
+            # changed.  To maintain consistency, locate all Product
+            # rows with a matching name and set their quantity_in_stock
+            # to the newly computed value.  Skip the current child when
+            # it is already a Product instance to avoid redundant
+            # assignments.  Guard the query in a try/except so that
+            # failures do not block the build process.
+            try:
+                from ...models import Product as _Prod  # type: ignore
+                # Determine the name to match; some children may lack a name
+                child_name = None
+                try:
+                    child_name = getattr(child, 'name', None)
+                except Exception:
+                    child_name = None
+                if child_name:
+                    # Query all products sharing this name
+                    try:
+                        prod_matches = list(_Prod.query.filter(_Prod.name == child_name).all())
+                    except Exception:
+                        prod_matches = []
+                    for _p in prod_matches:
+                        try:
+                            # Skip when the product is the same instance as the child
+                            if hasattr(child, 'id') and hasattr(_p, 'id') and child.id == _p.id:
+                                continue
+                        except Exception:
+                            # In case id comparison fails, proceed to update
+                            pass
+                        try:
+                            _p.quantity_in_stock = new_qty
+                        except Exception:
+                            # Continue updating other products even when one assignment fails
+                            pass
+            except Exception:
+                # Ignore failures in product propagation to avoid blocking the build
                 pass
         # Increment the finished product stock and adjust its structure
         product.quantity_in_stock = (product.quantity_in_stock or 0) + 1
@@ -9306,8 +9525,10 @@ def build_product(product_id: int) -> Any:
             # Assign parent_code and record association events for each
             # component stock item in the production box.  Skip the finished
             # product stock item itself to avoid a self‑link.  Only update
-            # items whose parent_code differs from ``dm_code`` to prevent
-            # duplicate events.
+            # items whose parent_code differs from ``dm_code`` and ensure
+            # that no more than the required quantity of each child product is
+            # associated.  This prevents additional components present in
+            # the production box from being consumed unintentionally.
             if box_id_assoc:
                 # Ensure we have the list of items
                 if items is None:
@@ -9315,90 +9536,177 @@ def build_product(product_id: int) -> Any:
                         items = _StockItem.query.filter_by(production_box_id=box_id_assoc).all()
                     except Exception:
                         items = []
+                # Build a mapping of required quantities per child product.
+                # Only count children that are true Product instances; structures
+                # do not have corresponding stock items in the box.
+                required_counts: dict[int, int] = {}
+                try:
+                    for c in children:
+                        try:
+                            child_obj = c.get('child')
+                        except Exception:
+                            child_obj = None
+                        if not child_obj:
+                            continue
+                        # Guard against importing Product lazily; rely on id matching
+                        try:
+                            child_id = getattr(child_obj, 'id', None)
+                        except Exception:
+                            child_id = None
+                        if child_id is None:
+                            continue
+                        # Skip if the object is not a Product.  Comparing class name
+                        # avoids importing Product at runtime.
+                        try:
+                            class_name = child_obj.__class__.__name__
+                        except Exception:
+                            class_name = ''
+                        if class_name != 'Product':
+                            continue
+                        qty_req = 1
+                        try:
+                            qty_req = int(c.get('qty_required') or 1)
+                        except Exception:
+                            qty_req = 1
+                        # Aggregate quantities across duplicate children
+                        required_counts[child_id] = required_counts.get(child_id, 0) + qty_req
+                except Exception:
+                    # On any error leave required_counts empty
+                    required_counts = {}
+                # Build a mapping of how many items are already associated in
+                # this box for each child product.  Only count items whose
+                # parent_code matches the finished product's DataMatrix code.
+                associated_counts_box: dict[int, int] = {}
+                try:
+                    for si in items or []:
+                        try:
+                            pid = getattr(si, 'product_id', None)
+                        except Exception:
+                            pid = None
+                        if pid is None:
+                            continue
+                        if pid == product.id:
+                            # Skip finished product itself
+                            continue
+                        try:
+                            p_code = getattr(si, 'parent_code', None)
+                        except Exception:
+                            p_code = None
+                        if p_code and p_code == dm_code:
+                            associated_counts_box[pid] = associated_counts_box.get(pid, 0) + 1
+                except Exception:
+                    # On error, assume nothing is associated
+                    associated_counts_box = {}
+                # Determine how many additional associations are needed per child
+                items_needed: dict[int, int] = {}
+                for pid, qty in required_counts.items():
+                    try:
+                        already = associated_counts_box.get(pid, 0)
+                    except Exception:
+                        already = 0
+                    remaining = qty - already
+                    if remaining > 0:
+                        items_needed[pid] = remaining
+                # Iterate through items in the box and associate at most the
+                # required number per child product.  Skip items that either
+                # belong to the finished product or already have the correct
+                # parent_code.  Decrement the counter as items are associated.
                 for si in items or []:
                     try:
-                        # Skip association for the finished product itself
-                        if getattr(si, 'product_id', None) == product.id:
-                            continue
-                        # Only update items that do not already have the
-                        # desired parent_code to prevent duplicate events
+                        pid = getattr(si, 'product_id', None)
+                    except Exception:
+                        pid = None
+                    if pid is None:
+                        continue
+                    # Skip the finished product itself
+                    if pid == product.id:
+                        continue
+                    # Skip items already associated to this build
+                    try:
                         current_parent = getattr(si, 'parent_code', None)
-                        if current_parent == dm_code:
-                            continue
-                        # Update the parent_code to link this component stock
-                        # item to the finished product's DataMatrix
+                    except Exception:
+                        current_parent = None
+                    if current_parent == dm_code:
+                        continue
+                    # Skip if this product does not need further association
+                    try:
+                        needed = items_needed.get(pid)
+                    except Exception:
+                        needed = None
+                    if not needed or needed <= 0:
+                        continue
+                    # Update parent_code to link this component stock item
+                    # to the finished product's DataMatrix
+                    try:
                         si.parent_code = dm_code
-                        # Record a ScanEvent with action ASSOCIA.  The meta
-                        # field stores the id of the user performing the
-                        # association.  Use the current user's id when
-                        # available.  The ScanEvent timestamp will be
-                        # generated automatically via TimestampMixin.
-                        meta_dict: dict[str, Any] = {}
-                        # Include the operator performing the association when authenticated
+                    except Exception:
+                        # If setting parent_code fails, skip this item
+                        continue
+                    # Record a ScanEvent with action ASSOCIA.  The meta field
+                    # stores the id of the user performing the association.
+                    meta_dict: dict[str, Any] = {}
+                    # Include the operator performing the association when authenticated
+                    try:
+                        uid = getattr(current_user, 'id', None)
+                        if uid:
+                            meta_dict['user_id'] = int(uid)
+                            try:
+                                meta_dict['user_username'] = current_user.username
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    # Persist static component information (name, description) for historical accuracy
+                    try:
+                        dm_meta = getattr(si, 'datamatrix_code', '') or ''
+                        comp_code_meta: str | None = None
+                        for seg in (dm_meta or '').split('|'):
+                            seg_str = seg.strip()
+                            if seg_str.upper().startswith('P='):
+                                comp_code_meta = seg_str.split('=', 1)[1]
+                                break
+                    except Exception:
+                        comp_code_meta = None
+                    struct_meta = None
+                    if comp_code_meta:
                         try:
-                            uid = getattr(current_user, 'id', None)
-                            if uid:
-                                meta_dict['user_id'] = int(uid)
-                                # Include the operator's username in the meta to preserve the original user display.
-                                try:
-                                    meta_dict['user_username'] = current_user.username
-                                except Exception:
-                                    pass
+                            struct_meta = Structure.query.filter_by(name=comp_code_meta).first()
                         except Exception:
-                            pass
-                        # Persist static component information (name, description, revision) for historical accuracy
+                            struct_meta = None
+                    # Fallback to stock item's product root when component lookup fails
+                    if not struct_meta:
                         try:
-                            dm_meta = getattr(si, 'datamatrix_code', '') or ''
-                            comp_code_meta: str | None = None
-                            for seg in (dm_meta or '').split('|'):
-                                seg_str = seg.strip()
-                                if seg_str.upper().startswith('P='):
-                                    comp_code_meta = seg_str.split('=', 1)[1]
-                                    break
+                            prod_tmp = getattr(si, 'product', None)
+                            if prod_tmp:
+                                root_comp_tmp = (
+                                    ProductComponent.query
+                                    .filter_by(product_id=prod_tmp.id)
+                                    .order_by(ProductComponent.id.asc())
+                                    .first()
+                                )
+                                if root_comp_tmp:
+                                    struct_meta = Structure.query.get(root_comp_tmp.structure_id)
                         except Exception:
-                            comp_code_meta = None
-                        struct_meta = None
-                        if comp_code_meta:
-                            try:
-                                struct_meta = Structure.query.filter_by(name=comp_code_meta).first()
-                            except Exception:
-                                struct_meta = None
-                        # Fallback to stock item's product root when component lookup fails
-                        if not struct_meta:
-                            try:
-                                prod_tmp = getattr(si, 'product', None)
-                                if prod_tmp:
-                                    root_comp_tmp = (
-                                        ProductComponent.query
-                                        .filter_by(product_id=prod_tmp.id)
-                                        .order_by(ProductComponent.id.asc())
-                                        .first()
-                                    )
-                                    if root_comp_tmp:
-                                        struct_meta = Structure.query.get(root_comp_tmp.structure_id)
-                            except Exception:
-                                struct_meta = None
-                        if struct_meta:
-                            try:
-                                meta_dict['structure_name'] = getattr(struct_meta, 'name', '') or ''
-                            except Exception:
-                                meta_dict['structure_name'] = ''
-                            try:
-                                meta_dict['structure_description'] = getattr(struct_meta, 'description', '') or ''
-                            except Exception:
-                                meta_dict['structure_description'] = ''
-                            # Intentionally omit ``revision_label`` and ``revision_index``
-                            # when recording ASSOCIA events.  The revision is captured
-                            # at load time and should not be updated during
-                            # associations.  Leaving these fields out of the
-                            # meta prevents later revisions from overriding
-                            # the original value in the archive.
-                        # Serialise the meta to JSON when any fields exist
+                            struct_meta = None
+                    if struct_meta:
+                        try:
+                            meta_dict['structure_name'] = getattr(struct_meta, 'name', '') or ''
+                        except Exception:
+                            meta_dict['structure_name'] = ''
+                        try:
+                            meta_dict['structure_description'] = getattr(struct_meta, 'description', '') or ''
+                        except Exception:
+                            meta_dict['structure_description'] = ''
+                        # Intentionally omit ``revision_label`` and ``revision_index``
+                        # when recording ASSOCIA events.  The revision is captured at load
+                        # time and should not be updated during associations.
+                    # Serialise the meta to JSON when any fields exist
+                    meta_json_val = None
+                    try:
+                        meta_json_val = _json.dumps(meta_dict) if meta_dict else None
+                    except Exception:
                         meta_json_val = None
-                        try:
-                            meta_json_val = _json.dumps(meta_dict) if meta_dict else None
-                        except Exception:
-                            meta_json_val = None
+                    try:
                         se = _ScanEvent(
                             datamatrix_code=getattr(si, 'datamatrix_code', ''),
                             action='ASSOCIA',
@@ -9406,10 +9714,20 @@ def build_product(product_id: int) -> Any:
                         )
                         db.session.add(se)
                     except Exception:
-                        # Continue processing other items even if one fails
-                        continue
+                        # Proceed even if creating the ScanEvent fails
+                        pass
+                    # Decrement remaining count for this product
+                    try:
+                        items_needed[pid] = items_needed.get(pid, 0) - 1
+                    except Exception:
+                        pass
+                    # If this product no longer requires associations, continue to next item
+                    continue
                 # Persist the updates to parent_code and the new scan events
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
         except Exception:
             # Silently ignore association errors; the primary build has
             # already been committed at this point.

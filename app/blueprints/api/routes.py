@@ -138,15 +138,37 @@ def associate_component() -> Any:
     component_code = data.get('component_code') or ''
     if not assembly_code or not component_code:
         return jsonify({'error': 'assembly_code and component_code are required'}), 400
-    # Look up the stock item for the provided component code.  Use
-    # equality match on the full DataMatrix because multiple items may
-    # share the same prefix but represent different physical units.
-    item = StockItem.query.filter_by(datamatrix_code=component_code).first()
+    # Look up a stock item for the provided component code.
+    #
+    # When lot management is enabled multiple stock items can share the same
+    # DataMatrix code.  In those cases ``parent_code`` distinguishes between
+    # free (unassociated) and consumed items.  Additionally, only items
+    # whose status indicates they have been physically loaded (``CARICATO`` or
+    # ``COMPLETATO``) should be eligible for association.  Without this
+    # restriction the API might return items that are still in production
+    # (status ``IN_PRODUZIONE``) or reserved (``PRENOTATO``), leading to
+    # confusing behaviour when operators attempt to consume a component.
+    base_q = StockItem.query.filter_by(datamatrix_code=component_code)
+    unassoc_q = base_q.filter(
+        (StockItem.parent_code.is_(None)) | (StockItem.parent_code == '')
+    )
+    # Prefer items that are loaded/completed
+    loaded_unassoc = unassoc_q.filter(
+        StockItem.status.in_(['CARICATO', 'COMPLETATO'])
+    )
+    item = loaded_unassoc.order_by(StockItem.id.asc()).first()
     if not item:
-        return jsonify({'error': 'Component not found'}), 404
-    # Ensure the item is not already linked to another assembly
-    if item.parent_code:
-        return jsonify({'error': 'Component already associated'}), 400
+        # If no loaded items are available, fall back to any unassociated item
+        # regardless of its status.  This allows consuming items that may
+        # have been loaded via an older workflow where status was not
+        # updated, while still preferring fully loaded items when present.
+        item = unassoc_q.order_by(StockItem.id.asc()).first()
+    if not item:
+        # Determine why no item was found: missing code vs. already consumed
+        any_item = base_q.first()
+        if not any_item:
+            return jsonify({'error': 'Component not found'}), 404
+        return jsonify({'error': 'Component already associated or not available for association'}), 400
     # Update parent_code and set a distinct status so that the item
     # no longer appears in the archive views.  Status values other
     # than LIBERO, PRENOTATO, IN_PRODUZIONE, CARICATO, COMPLETATO and

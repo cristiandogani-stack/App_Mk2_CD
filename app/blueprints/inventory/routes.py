@@ -9926,33 +9926,103 @@ def production_box_view(box_id: int):
     # standalone component) the metrics remain undefined.
 
     def _built_quantity_for_product(prod: Product | None) -> int:
-        """Return the total number of units assembled for ``prod``.
+        """Return the total number of finished units assembled for ``prod``.
 
-        The count is derived from the storico produzione (``ProductBuild``)
-        records to reflect how many units have actually been built over time.
-        When the aggregation query fails, fall back to summing the retrieved
-        rows in Python so that the UI still surfaces a meaningful number.
+        Only builds that represent the final product are counted.  Assemblies,
+        commercial parts and intermediate components recorded in the
+        ``ProductBuild`` archive are ignored so that the "Stock" metric shown in
+        the production box reflects exclusively completed products.
         """
 
         if not prod:
             return 0
+
+        product_id = getattr(prod, 'id', None)
+        if not product_id:
+            return 0
+
         try:
-            total = (db.session.query(func.coalesce(func.sum(ProductBuild.qty), 0))
-                     .filter(ProductBuild.product_id == prod.id)
-                     .scalar())
-            return int(total or 0)
+            child_rows = db.session.query(BOMLine.figlio_id).distinct().all()
         except Exception:
+            child_rows = []
+        child_product_ids: set[int] = set()
+        for row in child_rows or []:
             try:
-                builds = ProductBuild.query.filter_by(product_id=prod.id).all()
+                val = row[0] if isinstance(row, (tuple, list)) else getattr(row, 'figlio_id', None)
             except Exception:
-                return 0
-            total = 0
-            for build in builds:
+                val = None
+            if val is None:
+                continue
+            try:
+                child_product_ids.add(int(val))
+            except Exception:
                 try:
-                    total += int(getattr(build, 'qty', 0) or 0)
+                    child_product_ids.add(val)  # type: ignore[arg-type]
                 except Exception:
                     continue
-            return total
+
+        box_cache: dict[int, ProductionBox | None] = {}
+
+        def _get_box(box_id: int) -> ProductionBox | None:
+            if box_id in box_cache:
+                return box_cache[box_id]
+            try:
+                box_obj = ProductionBox.query.get(box_id)
+            except Exception:
+                box_obj = None
+            box_cache[box_id] = box_obj
+            return box_obj
+
+        def _is_finished_build(pb: ProductBuild) -> bool:
+            if not pb:
+                return False
+
+            box_id = None
+            try:
+                box_id = getattr(pb, 'production_box_id', None)
+            except Exception:
+                box_id = None
+
+            if box_id:
+                box_obj = _get_box(box_id)
+                if box_obj:
+                    try:
+                        box_type = (getattr(box_obj, 'box_type', '') or '').strip().upper()
+                    except Exception:
+                        box_type = ''
+                    if box_type == 'PRODOTTO':
+                        return True
+                try:
+                    items = StockItem.query.filter_by(production_box_id=box_id, product_id=product_id).all()
+                except Exception:
+                    items = []
+                for item in items or []:
+                    try:
+                        dm_val = (item.datamatrix_code or '').upper()
+                    except Exception:
+                        dm_val = ''
+                    if dm_val and 'T=PRODOTTO' in dm_val:
+                        return True
+
+            return product_id not in child_product_ids
+
+        try:
+            builds = ProductBuild.query.filter_by(product_id=product_id).all()
+        except Exception:
+            builds = []
+
+        total = 0
+        for build in builds or []:
+            try:
+                qty_val = int(getattr(build, 'qty', 0) or 0)
+            except Exception:
+                qty_val = 0
+            if qty_val <= 0:
+                continue
+            if not _is_finished_build(build):
+                continue
+            total += qty_val
+        return total
 
     stock_qty: int | None = None
     available_to_build: int | None = None
@@ -9990,13 +10060,10 @@ def production_box_view(box_id: int):
                             assembly_product = Product.query.get(comp_ref.product_id)
                 except Exception:
                     assembly_product = None
-                if assembly_product:
-                    stock_qty = _built_quantity_for_product(assembly_product)
-                else:
-                    try:
-                        stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
-                    except Exception:
-                        stock_qty = 0
+                try:
+                    stock_qty = int(getattr(root_structure, 'quantity_in_stock', 0) or 0)
+                except Exception:
+                    stock_qty = 0
                 try:
                     _assign_complete_qty_recursive(root_structure)
                 except Exception:
